@@ -1,0 +1,49 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/settings.json
+!.vscode/extensions.json
+!.vscode/launch.json
+!.vscode/tasks.json
+
+# Node / frontend
+node_modules/
+dist/
+build/
+.vite/
+coverage/
+npm-debug.log*
+
+# .NET / backend
+bin/
+obj/
+TestResults/
+
+# Environment / local config
+.env
+.env.local
+.env.*.local
+appsettings.Development.json
+appsettings.Local.json
+
+# Local runtime data
+data/
+uploads/
+audio/
+exports/
+temp/
+models/
+logs/
+
+# Generated artifacts
+playwright-report/
+test-results/
+
+# Archives / large files
+*.zip
+*.tar
+*.gz
+*.sqlite
+*.db

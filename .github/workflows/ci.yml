@@ -1,0 +1,78 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  docs-guard:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate required docs
+        run: |
+          test -f AGENTS.md
+          test -f README.md
+          test -f TASKS.md
+          test -f class-transcriber-shared-api-contract.md
+          test -f class-transcriber-frontend-prd.md
+          test -f class-transcriber-backend-prd.md
+          test -f class-transcriber-frontend-tech-stack-requirements.md
+          test -f class-transcriber-backend-tech-stack-requirements.md
+
+      - name: Validate project naming drift
+        run: |
+          ! grep -En "Homelab Class Transcriber|Class Transcriber" \
+            AGENTS.md \
+            README.md \
+            TASKS.md \
+            class-transcriber-shared-api-contract.md \
+            class-transcriber-frontend-prd.md \
+            class-transcriber-backend-prd.md \
+            class-transcriber-frontend-tech-stack-requirements.md \
+            class-transcriber-backend-tech-stack-requirements.md || exit 1
+
+      - name: Validate shared status drift
+        run: |
+          ! grep -En '\bUploading\b' class-transcriber-shared-api-contract.md class-transcriber-backend-prd.md || exit 1
+
+  backend:
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('src/**/*.csproj') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 10.0.x
+
+      - name: Restore
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore --configuration Release
+
+      - name: Test
+        run: dotnet test --no-build --configuration Release
+
+  frontend:
+    runs-on: ubuntu-latest
+    if: ${{ hashFiles('package.json', 'package-lock.json') != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install
+        run: npm ci
+
+      - name: Lint
+        run: npm run lint --if-present
+
+      - name: Test
+        run: npm run test --if-present
+
+      - name: Build
+        run: npm run build --if-present

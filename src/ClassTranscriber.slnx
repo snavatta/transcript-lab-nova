@@ -1,0 +1,4 @@
+<Solution>
+  <Project Path="ClassTranscriber.Api.Tests/ClassTranscriber.Api.Tests.csproj" />
+  <Project Path="ClassTranscriber.Api/ClassTranscriber.Api.csproj" />
+</Solution>
