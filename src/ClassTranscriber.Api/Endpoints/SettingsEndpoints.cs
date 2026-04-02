@@ -35,6 +35,31 @@ public static class SettingsEndpoints
         })
         .WithName("GetSettings");
 
+        group.MapGet("/models", async (ITranscriptionModelManagerService service, CancellationToken ct) =>
+        {
+            var catalog = await service.GetCatalogAsync(ct);
+            return Results.Ok(catalog);
+        })
+        .WithName("GetTranscriptionModels");
+
+        group.MapPost("/models/manage", async (ManageTranscriptionModelRequest request, ITranscriptionModelManagerService service, CancellationToken ct) =>
+        {
+            try
+            {
+                var result = await service.ManageAsync(request, ct);
+                return Results.Ok(result);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new ErrorResponse("validation_error", ex.Message));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return Results.BadRequest(new ErrorResponse("validation_error", ex.Message));
+            }
+        })
+        .WithName("ManageTranscriptionModel");
+
         group.MapPut("/", async (UpdateGlobalSettingsRequest request, ISettingsService service, ITranscriptionEngineRegistry engineRegistry, CancellationToken ct) =>
         {
             var validLanguageModes = new[] { "Auto", "Fixed" };
@@ -54,6 +79,17 @@ public static class SettingsEndpoints
 
             if (request.DefaultLanguageMode == "Fixed" && string.IsNullOrWhiteSpace(request.DefaultLanguageCode))
                 return Results.BadRequest(new ErrorResponse("validation_error", "Language code is required when language mode is Fixed."));
+
+            if (request.DefaultLanguageMode == "Fixed"
+                && !TranscriptionLanguageCatalog.IsSupportedFixedLanguage(request.DefaultEngine, request.DefaultLanguageCode))
+            {
+                var supportedLanguages = string.Join(", ", TranscriptionLanguageCatalog.GetSupportedFixedLanguages(request.DefaultEngine));
+                return Results.BadRequest(new ErrorResponse(
+                    "validation_error",
+                    supportedLanguages.Length == 0
+                        ? "Unsupported fixed language for engine."
+                        : $"Unsupported fixed language for engine {request.DefaultEngine}. Supported fixed languages: {supportedLanguages}."));
+            }
 
             if (!validViewModes.Contains(request.DefaultTranscriptViewMode))
                 return Results.BadRequest(new ErrorResponse("validation_error", "Invalid transcript view mode."));

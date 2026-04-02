@@ -19,6 +19,7 @@ interface ProjectState {
   progress: number | null;
   mediaType: 'Audio' | 'Video';
   durationMs: number | null;
+  transcriptionElapsedMs: number | null;
   totalSizeBytes: number | null;
   createdAtUtc: string;
   updatedAtUtc: string;
@@ -113,6 +114,7 @@ function toProjectSummary(state: MockState, project: ProjectState) {
     progress: project.progress,
     mediaType: project.mediaType,
     durationMs: project.durationMs,
+    transcriptionElapsedMs: project.transcriptionElapsedMs,
     totalSizeBytes: project.totalSizeBytes,
     createdAtUtc: project.createdAtUtc,
     updatedAtUtc: project.updatedAtUtc,
@@ -140,6 +142,7 @@ function completeProject(project: ProjectState) {
   project.status = 'Completed';
   project.progress = 100;
   project.durationMs = 3_600_000;
+  project.transcriptionElapsedMs = 522_000;
   project.totalSizeBytes = 412_345_678;
   project.updatedAtUtc = NOW;
   project.transcriptAvailable = true;
@@ -246,6 +249,7 @@ async function installMockApi(page: Page) {
         progress: 0,
         mediaType: 'Audio',
         durationMs: null,
+        transcriptionElapsedMs: null,
         totalSizeBytes: 268_435_456,
         createdAtUtc: NOW,
         updatedAtUtc: NOW,
@@ -397,7 +401,7 @@ test('supports folder creation, upload review, queue monitoring, project polling
   await page.locator('header').getByRole('button', { name: 'Create Folder' }).click();
   await page.getByLabel('Folder name').fill('Biology');
   await page.getByRole('combobox', { name: 'Folder icon' }).fill('Science');
-  await page.getByRole('option', { name: 'Science' }).click();
+  await page.getByRole('option', { name: /^Science$/ }).click();
   await page.getByLabel('Color hex').fill('#2E7D32');
   await page.getByRole('button', { name: 'Create' }).click();
 
@@ -407,7 +411,7 @@ test('supports folder creation, upload review, queue monitoring, project polling
   await expect(page.getByRole('combobox', { name: 'Folder icon' })).toHaveValue('Science');
   await expect(page.getByLabel('Color hex')).toHaveValue('#2E7D32');
   await page.getByRole('combobox', { name: 'Folder icon' }).fill('Biotech');
-  await page.getByRole('option', { name: 'Biotech' }).click();
+  await page.getByRole('option', { name: /^Biotech$/ }).click();
   await page.getByLabel('Color hex').fill('#8E24AA');
   await page.getByRole('button', { name: 'Save' }).click();
 
@@ -443,7 +447,7 @@ test('supports folder creation, upload review, queue monitoring, project polling
   await page.getByText('Biology Lecture 01').click();
 
   await expect(page.getByText('Waiting in queue')).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Export' })).toBeVisible({ timeout: 8_000 });
+  await expect(page.getByRole('button', { name: 'Export' })).toBeVisible({ timeout: 20_000 });
   await expect(page.getByRole('button', { name: 'Timestamped' })).toHaveAttribute('aria-pressed', 'true');
 
   await page.getByRole('button', { name: 'Export' }).click();

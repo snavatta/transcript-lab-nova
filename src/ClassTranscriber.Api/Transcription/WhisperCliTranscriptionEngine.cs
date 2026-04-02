@@ -18,7 +18,6 @@ public class WhisperOptions
 
 public class WhisperCliTranscriptionEngine : IRegisteredTranscriptionEngine
 {
-    private const string ModelDownloadClientName = "WhisperModelDownloads";
     private static readonly ConcurrentDictionary<string, SemaphoreSlim> ModelLocks = new(StringComparer.OrdinalIgnoreCase);
     private readonly WhisperOptions _options;
     private readonly IHttpClientFactory _httpClientFactory;
@@ -38,8 +37,17 @@ public class WhisperCliTranscriptionEngine : IRegisteredTranscriptionEngine
 
     public IReadOnlyCollection<string> SupportedModels { get; } = ["tiny", "base", "small", "medium", "large"];
 
+    public string? GetAvailabilityError()
+        => ProcessPathResolver.ExecutableExists(_options.WhisperCliPath)
+            ? null
+            : $"Whisper is unavailable because the whisper CLI executable '{_options.WhisperCliPath}' could not be found.";
+
     public async Task<TranscriptionResult> TranscribeAsync(string audioPath, ProjectSettings settings, CancellationToken ct = default)
     {
+        var availabilityError = GetAvailabilityError();
+        if (availabilityError is not null)
+            throw new InvalidOperationException(availabilityError);
+
         var modelPath = await ResolveModelPathAsync(settings.Model, ct);
         var outputDir = Path.GetDirectoryName(audioPath) ?? Path.GetTempPath();
         var baseName = Path.GetFileNameWithoutExtension(audioPath);
@@ -114,11 +122,7 @@ public class WhisperCliTranscriptionEngine : IRegisteredTranscriptionEngine
 
     private async Task<string> ResolveModelPathAsync(string model, CancellationToken ct)
     {
-        var modelFileName = GetModelFileName(model);
-        var modelsRoot = Path.GetFullPath(_options.ModelsPath);
-        Directory.CreateDirectory(modelsRoot);
-
-        var path = Path.GetFullPath(Path.Combine(modelsRoot, modelFileName));
+        var path = GgmlModelDownloads.GetModelPath(_options.ModelsPath, model);
         if (File.Exists(path))
             return path;
 
@@ -132,7 +136,7 @@ public class WhisperCliTranscriptionEngine : IRegisteredTranscriptionEngine
             if (File.Exists(path))
                 return path;
 
-            await DownloadModelAsync(model, modelFileName, path, ct);
+            await DownloadModelAsync(model, path, ct);
             return path;
         }
         finally
@@ -141,64 +145,14 @@ public class WhisperCliTranscriptionEngine : IRegisteredTranscriptionEngine
         }
     }
 
-    private async Task DownloadModelAsync(string model, string modelFileName, string destinationPath, CancellationToken ct)
-    {
-        var downloadBaseUrl = _options.ModelDownloadBaseUrl.TrimEnd('/');
-        var downloadUrl = $"{downloadBaseUrl}/{Uri.EscapeDataString(modelFileName)}";
-        var tempPath = $"{destinationPath}.download";
-
-        _logger.LogInformation(
-            "Whisper model {Model} is missing. Downloading from {DownloadUrl} to {DestinationPath}",
+    private Task DownloadModelAsync(string model, string destinationPath, CancellationToken ct)
+        => GgmlModelDownloads.DownloadModelAsync(
+            _httpClientFactory,
+            _options.ModelDownloadBaseUrl,
             model,
-            downloadUrl,
-            destinationPath);
-
-        try
-        {
-            if (File.Exists(tempPath))
-                File.Delete(tempPath);
-
-            var client = _httpClientFactory.CreateClient(ModelDownloadClientName);
-            using var response = await client.GetAsync(downloadUrl, HttpCompletionOption.ResponseHeadersRead, ct);
-            response.EnsureSuccessStatusCode();
-
-            await using var source = await response.Content.ReadAsStreamAsync(ct);
-            await using var destination = new FileStream(tempPath, FileMode.CreateNew, FileAccess.Write, FileShare.None);
-            await source.CopyToAsync(destination, ct);
-            await destination.FlushAsync(ct);
-
-            File.Move(tempPath, destinationPath, overwrite: true);
-            _logger.LogInformation("Downloaded Whisper model {Model} to {DestinationPath}", model, destinationPath);
-        }
-        catch
-        {
-            try
-            {
-                if (File.Exists(tempPath))
-                    File.Delete(tempPath);
-            }
-            catch
-            {
-                // Best effort cleanup for a failed download.
-            }
-
-            throw;
-        }
-    }
-
-    private static string GetModelFileName(string model)
-    {
-        if (string.IsNullOrWhiteSpace(model))
-            throw new ArgumentException("Whisper model is required.", nameof(model));
-
-        foreach (var ch in model)
-        {
-            if (!char.IsLetterOrDigit(ch) && ch is not '-' and not '_' and not '.')
-                throw new InvalidOperationException($"Invalid Whisper model name '{model}'.");
-        }
-
-        return $"ggml-{model}.bin";
-    }
+            destinationPath,
+            _logger,
+            ct);
 
     // whisper.cpp JSON output format
     private record WhisperOutput

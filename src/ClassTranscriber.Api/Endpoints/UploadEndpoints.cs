@@ -1,7 +1,6 @@
 using System.Text.Json;
 using ClassTranscriber.Api.Contracts;
 using ClassTranscriber.Api.Services;
-using ClassTranscriber.Api.Transcription;
 
 namespace ClassTranscriber.Api.Endpoints;
 
@@ -9,7 +8,7 @@ public static class UploadEndpoints
 {
     public static void MapUploadEndpoints(this WebApplication app)
     {
-        app.MapPost("/api/uploads/batch", async (HttpRequest request, IUploadService uploadService, ITranscriptionEngineRegistry engineRegistry, CancellationToken ct) =>
+        app.MapPost("/api/uploads/batch", async (HttpRequest request, IUploadService uploadService, CancellationToken ct) =>
         {
             if (!request.HasFormContentType)
                 return Results.BadRequest(new ErrorResponse("invalid_request", "Expected multipart/form-data."));
@@ -22,42 +21,21 @@ public static class UploadEndpoints
 
             var autoQueue = bool.TryParse(form["autoQueue"].ToString(), out var aq) && aq;
 
-            ProjectSettingsDto settings;
+            ProjectSettingsDto? settingsOverride = null;
             var settingsJson = form["settings"].ToString();
             if (!string.IsNullOrWhiteSpace(settingsJson))
             {
                 try
                 {
-                    settings = JsonSerializer.Deserialize<ProjectSettingsDto>(settingsJson, new JsonSerializerOptions
+                    settingsOverride = JsonSerializer.Deserialize<ProjectSettingsDto>(settingsJson, new JsonSerializerOptions
                     {
                         PropertyNameCaseInsensitive = true,
-                    })!;
+                    });
                 }
                 catch
                 {
                     return Results.BadRequest(new ErrorResponse("validation_error", "Invalid settings JSON."));
                 }
-            }
-            else
-            {
-                settings = new ProjectSettingsDto
-                {
-                    Engine = "Whisper",
-                    Model = "small",
-                    LanguageMode = "Auto",
-                    LanguageCode = null,
-                    AudioNormalizationEnabled = true,
-                    DiarizationEnabled = false,
-                };
-            }
-
-            if (!engineRegistry.IsSupportedEngine(settings.Engine))
-                return Results.BadRequest(new ErrorResponse("validation_error", "Unsupported engine."));
-
-            if (!engineRegistry.IsSupportedModel(settings.Engine, settings.Model))
-            {
-                var supportedModels = string.Join(", ", engineRegistry.GetSupportedModels(settings.Engine));
-                return Results.BadRequest(new ErrorResponse("validation_error", $"Unsupported model for engine {settings.Engine}. Supported models: {supportedModels}."));
             }
 
             var files = form.Files.GetFiles("files");
@@ -77,7 +55,7 @@ public static class UploadEndpoints
                     if (parsed is not null)
                     {
                         items.AddRange(parsed.Select(i => new UploadItemMetadata(
-                            i.OriginalFileName ?? "",
+                            i.OriginalFileName,
                             i.ProjectName)));
                     }
                 }
@@ -89,12 +67,16 @@ public static class UploadEndpoints
 
             try
             {
-                var result = await uploadService.BatchUploadAsync(folderId, autoQueue, settings, files, items, ct);
+                var result = await uploadService.BatchUploadAsync(folderId, autoQueue, settingsOverride, files, items, ct);
                 return Results.Ok(result);
+            }
+            catch (KeyNotFoundException ex)
+            {
+                return Results.NotFound(new ErrorResponse("not_found", ex.Message));
             }
             catch (ArgumentException ex)
             {
-                return Results.NotFound(new ErrorResponse("not_found", ex.Message));
+                return Results.BadRequest(new ErrorResponse("validation_error", ex.Message));
             }
         })
         .WithName("BatchUpload")

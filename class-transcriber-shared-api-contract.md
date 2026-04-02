@@ -113,10 +113,20 @@ Timestamped
 ```text
 Whisper
 SherpaOnnx
+SherpaOnnxSenseVoice
+WhisperNet
+WhisperNetCuda
+WhisperNetOpenVino
 ```
 
 Implementation note:
-- `SherpaOnnx` is selectable, but backend deployments must provide the local Sherpa runtime/assets required by that engine.
+- `SherpaOnnx` is selectable, but backend deployments must provide the local Sherpa runtime required by that engine. Model assets are resolved from local storage first and may be auto-downloaded on first use when backend configuration enables it. Current backend implementation uses the official SherpaOnnx .NET runtime through an isolated helper worker process rather than a Python adapter.
+- `SherpaOnnxSenseVoice` is a separate selectable SherpaOnnx engine variant backed by SenseVoice models through the same isolated helper worker process. It is intended to be compared separately from the Whisper-backed `SherpaOnnx` engine.
+  Current backend implementation only accepts fixed-language codes `zh`, `en`, `ja`, `ko`, and `yue` for this engine; `Auto` remains supported.
+- `WhisperNet` uses the Whisper.net managed library with CPU inference (Whisper.net.Runtime) through an isolated helper worker process so runtime selection is per job rather than process-global.
+- `WhisperNetCuda` uses the Whisper.net managed library with NVIDIA CUDA acceleration through the same isolated helper-worker model. Current backend implementation targets the stable `Whisper.net.Runtime.Cuda` runtime. Requires a supported NVIDIA GPU plus CUDA runtime libraries on the host/container.
+- `WhisperNetOpenVino` uses the Whisper.net managed library with Intel OpenVino acceleration (Whisper.net.Runtime.OpenVino) through the same isolated helper-worker model. Requires the OpenVino toolkit (>= 2024.4). Current backend implementation keeps the engine selectable when the helper worker is installed, then performs a runtime probe before each job and fails with a clear error if the host cannot load the required OpenVino libraries.
+- `WhisperNet`, `WhisperNetCuda`, and `WhisperNetOpenVino` use the same ggml model files as the `Whisper` CLI engine and support auto-download.
 
 ## ModelName
 Suggested allowed values for MVP:
@@ -130,6 +140,10 @@ The backend may allow extension, but frontend should default to the above MVP-sa
 Current implementation note:
 - `Whisper` supports `tiny`, `base`, `small`, `medium`, `large`
 - `SherpaOnnx` currently supports `small`, `medium`
+- `SherpaOnnxSenseVoice` currently supports `small`
+- `WhisperNet` supports `tiny`, `base`, `small`, `medium`, `large`
+- `WhisperNetCuda` supports `tiny`, `base`, `small`, `medium`, `large`
+- `WhisperNetOpenVino` supports `tiny`, `base`, `small`, `medium`, `large`
 
 ---
 
@@ -251,6 +265,9 @@ Fields:
 - `text: string`
 - `speaker: string | null`
 
+Behavior note:
+- when diarization is enabled for a project, `speaker` may contain labels such as `Speaker 1`
+
 ### TranscriptDto
 ```json
 {
@@ -298,6 +315,7 @@ Fields:
   "progress": 0,
   "mediaType": "Video",
   "durationMs": null,
+  "transcriptionElapsedMs": null,
   "totalSizeBytes": 268435456,
   "createdAtUtc": "2026-04-01T18:25:43Z",
   "updatedAtUtc": "2026-04-01T18:25:43Z"
@@ -314,6 +332,7 @@ Fields:
 - `progress: number | null`
 - `mediaType: MediaType`
 - `durationMs: number | null`
+- `transcriptionElapsedMs: number | null`
 - `totalSizeBytes: number | null`
 - `createdAtUtc: string`
 - `updatedAtUtc: string`
@@ -330,6 +349,7 @@ Fields:
   "progress": 100,
   "mediaType": "Video",
   "durationMs": 3600000,
+  "transcriptionElapsedMs": 522000,
   "totalSizeBytes": 412345678,
   "createdAtUtc": "2026-04-01T18:25:43Z",
   "updatedAtUtc": "2026-04-01T18:25:43Z",
@@ -347,10 +367,22 @@ Fields:
     "diarizationEnabled": false
   },
   "mediaUrl": "/api/projects/guid/media",
+  "audioPreviewUrl": "/api/projects/guid/audio",
   "transcriptAvailable": true,
   "availableExports": ["txt", "md", "html", "pdf"],
   "originalFileSizeBytes": 385000000,
-  "workspaceSizeBytes": 27345678
+  "workspaceSizeBytes": 27345678,
+  "debugTimings": {
+    "totalElapsedMs": 528250,
+    "preparationElapsedMs": 6250,
+    "inspectElapsedMs": 300,
+    "extractElapsedMs": 4100,
+    "normalizeElapsedMs": 1850,
+    "transcriptionElapsedMs": 522000,
+    "persistElapsedMs": 250,
+    "transcriptionRealtimeFactor": 0.15,
+    "totalRealtimeFactor": 0.15
+  }
 }
 ```
 
@@ -363,10 +395,42 @@ Fields:
 - `errorMessage: string | null`
 - `settings: ProjectSettingsDto`
 - `mediaUrl: string`
+- `audioPreviewUrl: string | null`
 - `transcriptAvailable: boolean`
 - `availableExports: string[]`
 - `originalFileSizeBytes: number | null`
 - `workspaceSizeBytes: number | null`
+- `debugTimings?: ProjectDebugTimingsDto | null`
+
+### ProjectDebugTimingsDto
+```json
+{
+  "totalElapsedMs": 528250,
+  "preparationElapsedMs": 6250,
+  "inspectElapsedMs": 300,
+  "extractElapsedMs": 4100,
+  "normalizeElapsedMs": 1850,
+  "transcriptionElapsedMs": 522000,
+  "persistElapsedMs": 250,
+  "transcriptionRealtimeFactor": 0.15,
+  "totalRealtimeFactor": 0.15
+}
+```
+
+Fields:
+- `totalElapsedMs: number | null`
+- `preparationElapsedMs: number | null`
+- `inspectElapsedMs: number | null`
+- `extractElapsedMs: number | null`
+- `normalizeElapsedMs: number | null`
+- `transcriptionElapsedMs: number | null`
+- `persistElapsedMs: number | null`
+- `transcriptionRealtimeFactor: number | null`
+- `totalRealtimeFactor: number | null`
+
+Notes:
+- optional diagnostic metrics for completed jobs
+- intended for UI debug display and engine comparison, not end-user progress estimation
 
 ---
 
@@ -384,6 +448,7 @@ Fields:
   "progress": 0,
   "mediaType": "Video",
   "durationMs": null,
+  "transcriptionElapsedMs": null,
   "totalSizeBytes": 268435456,
   "engine": "Whisper",
   "model": "small",
@@ -411,6 +476,7 @@ Fields:
       "progress": 0,
       "mediaType": "Video",
       "durationMs": null,
+      "transcriptionElapsedMs": null,
       "totalSizeBytes": 268435456,
       "engine": "Whisper",
       "model": "small",
@@ -491,6 +557,86 @@ Fields:
 
 Fields:
 - `engines: TranscriptionEngineOptionDto[]`
+
+### RuntimeDiagnosticsDto
+```json
+{
+  "collectedAtUtc": "2026-04-02T20:35:10Z",
+  "processId": 1,
+  "processorCount": 8,
+  "uptimeMs": 182000,
+  "cpuUsagePercent": 3.4,
+  "workingSetBytes": 183746560,
+  "privateMemoryBytes": 295759872,
+  "managedHeapBytes": 41287680
+}
+```
+
+Fields:
+- `collectedAtUtc: string`
+- `processId: number`
+- `processorCount: number`
+- `uptimeMs: number`
+- `cpuUsagePercent: number`
+- `workingSetBytes: number`
+- `privateMemoryBytes: number`
+- `managedHeapBytes: number`
+
+### DiagnosticsEngineDto
+```json
+{
+  "engine": "WhisperNetCuda",
+  "isAvailable": false,
+  "models": ["tiny", "base", "small", "medium", "large"],
+  "availabilityError": "WhisperNetCuda is unavailable because CUDA runtime libraries are not installed."
+}
+```
+
+Fields:
+- `engine: string`
+- `isAvailable: boolean`
+- `models: string[]`
+- `availabilityError: string | null`
+
+### ProjectStorageDiagnosticsDto
+```json
+{
+  "projectId": "guid",
+  "folderId": "guid",
+  "folderName": "Biology",
+  "projectName": "Lecture 02",
+  "status": "Completed",
+  "originalFileSizeBytes": 267386880,
+  "workspaceSizeBytes": 1835008,
+  "totalSizeBytes": 269221888,
+  "updatedAtUtc": "2026-04-02T20:35:10Z"
+}
+```
+
+Fields:
+- `projectId: string`
+- `folderId: string`
+- `folderName: string`
+- `projectName: string`
+- `status: ProjectStatus`
+- `originalFileSizeBytes: number | null`
+- `workspaceSizeBytes: number | null`
+- `totalSizeBytes: number | null`
+- `updatedAtUtc: string`
+
+### DiagnosticsDto
+```json
+{
+  "runtime": {},
+  "engines": [],
+  "projects": []
+}
+```
+
+Fields:
+- `runtime: RuntimeDiagnosticsDto`
+- `engines: DiagnosticsEngineDto[]`
+- `projects: ProjectStorageDiagnosticsDto[]`
 
 ---
 
@@ -686,6 +832,26 @@ Response:
 Response:
 `ProjectDetailDto`
 
+Notes:
+- `debugTimings` may be omitted when no timing metrics have been recorded yet
+
+### PUT `/api/projects/{id}`
+Request:
+```json
+{
+  "name": "Clase 01 - Células"
+}
+```
+
+Response:
+`ProjectDetailDto`
+
+Behavior:
+- updates the project display name
+- trims the submitted name before saving
+- returns `400 Bad Request` when the name is empty after trimming or longer than 120 characters
+- returns `404 Not Found` when the project does not exist
+
 ### DELETE `/api/projects/{id}`
 Required in MVP.
 
@@ -694,11 +860,27 @@ Recommended responses:
 - `404 Not Found`
 
 ### POST `/api/projects/{id}/retry`
+Optional request body:
+```json
+{
+  "settings": {
+    "engine": "WhisperNet",
+    "model": "base",
+    "languageMode": "Auto",
+    "languageCode": null,
+    "audioNormalizationEnabled": true,
+    "diarizationEnabled": false
+  }
+}
+```
+
 Response:
 `ProjectDetailDto`
 
 Behavior:
 - valid only for failed projects in MVP
+- when `settings` is omitted, the backend retries with the project's current settings
+- when `settings` is provided, the backend validates and applies the override before re-queueing
 
 ### POST `/api/projects/{id}/queue`
 Response:
@@ -767,6 +949,14 @@ Response:
 
 Used by browser audio/video player.
 
+### GET `/api/projects/{id}/audio`
+Response:
+- extracted or otherwise prepared transcription audio stream when available
+- `audio/wav`
+- range request support if practical
+
+Used by the project detail page when the uploaded source is video and the backend has already produced a previewable derived audio file.
+
 ---
 
 ## 6.7 Export route
@@ -808,14 +998,6 @@ Response:
 ### PUT `/api/settings`
 Request:
 ```json
-
-### GET `/api/settings/options`
-Response:
-`TranscriptionOptionsDto`
-
-Behavior:
-- returns the currently supported transcription engines and allowed model names per engine
-- frontend should use this route instead of hard-coding engine/model lists
 {
   "defaultEngine": "Whisper",
   "defaultModel": "small",
@@ -829,6 +1011,53 @@ Behavior:
 
 Response:
 `GlobalSettingsDto`
+
+### GET `/api/settings/options`
+Response:
+`TranscriptionOptionsDto`
+
+Behavior:
+- returns the currently supported transcription engines and allowed model names per engine
+- frontend should use this route instead of hard-coding engine/model lists
+
+### GET `/api/settings/models`
+Response:
+`TranscriptionModelCatalogDto`
+
+Behavior:
+- returns a model-management catalog for known engines and models
+- includes filesystem install status and install path per model
+- automatically probes installed models so runtime failures are visible without uploading a file
+- `probeState` may be `Missing`, `Installed`, `Ready`, `Failed`, `Unavailable`, or `Unsupported`
+
+### POST `/api/settings/models/manage`
+Request:
+```json
+{
+  "engine": "SherpaOnnx",
+  "model": "small",
+  "action": "Probe"
+}
+```
+
+Response:
+`TranscriptionModelEntryDto`
+
+Behavior:
+- supported actions are `Download`, `Redownload`, and `Probe`
+- `Download` fetches a missing model into the configured local models path
+- `Redownload` replaces the local model assets for the specified engine/model
+- `Probe` validates the installed model in the current runtime and returns an updated probe result
+- invalid engine/model/action combinations return `400 Bad Request`
+
+### GET `/api/diagnostics`
+Response:
+`DiagnosticsDto`
+
+Behavior:
+- returns a runtime snapshot for the current backend process
+- includes per-engine runtime availability, including unavailable engines with an `availabilityError`
+- includes persisted per-project storage usage values for original, workspace, and total disk consumption
 
 ---
 
@@ -859,6 +1088,9 @@ Response:
 ## Project retry validation
 - project must exist
 - retry allowed only in supported states
+- retry settings override is optional
+- if retry settings override is provided, engine must be currently supported
+- if retry settings override is provided, model and fixed-language rules follow normal settings validation
 
 ---
 
@@ -1030,6 +1262,7 @@ export interface ProjectSummaryDto {
   progress: number | null;
   mediaType: MediaType;
   durationMs: number | null;
+  transcriptionElapsedMs: number | null;
   totalSizeBytes: number | null;
   createdAtUtc: string;
   updatedAtUtc: string;
@@ -1043,10 +1276,28 @@ export interface ProjectDetailDto extends ProjectSummaryDto {
   errorMessage: string | null;
   settings: ProjectSettingsDto;
   mediaUrl: string;
+  audioPreviewUrl: string | null;
   transcriptAvailable: boolean;
   availableExports: string[];
   originalFileSizeBytes: number | null;
   workspaceSizeBytes: number | null;
+  debugTimings?: ProjectDebugTimingsDto | null;
+}
+
+export interface UpdateProjectRequest {
+  name: string;
+}
+
+export interface ProjectDebugTimingsDto {
+  totalElapsedMs: number | null;
+  preparationElapsedMs: number | null;
+  inspectElapsedMs: number | null;
+  extractElapsedMs: number | null;
+  normalizeElapsedMs: number | null;
+  transcriptionElapsedMs: number | null;
+  persistElapsedMs: number | null;
+  transcriptionRealtimeFactor: number | null;
+  totalRealtimeFactor: number | null;
 }
 
 export interface QueueOverviewDto {
@@ -1064,6 +1315,28 @@ export interface GlobalSettingsDto {
   defaultAudioNormalizationEnabled: boolean;
   defaultDiarizationEnabled: boolean;
   defaultTranscriptViewMode: TranscriptViewMode;
+}
+
+export interface TranscriptionModelEntryDto {
+  engine: string;
+  model: string;
+  isInstalled: boolean;
+  installPath: string | null;
+  canDownload: boolean;
+  canRedownload: boolean;
+  canProbe: boolean;
+  probeState: string;
+  probeMessage: string;
+}
+
+export interface TranscriptionModelCatalogDto {
+  models: TranscriptionModelEntryDto[];
+}
+
+export interface ManageTranscriptionModelRequest {
+  engine: string;
+  model: string;
+  action: string;
 }
 ```
 
@@ -1103,7 +1376,7 @@ Frontend and backend are considered aligned when:
 4. Transcript retrieval returns both plain text and segments
 5. Media playback uses `/api/projects/{id}/media`
 6. Exports use `/api/projects/{id}/export?format=...`
-7. Settings APIs use `GlobalSettingsDto`
+7. Settings APIs use `GlobalSettingsDto` plus the model-management DTOs documented here
 8. Error and validation handling are predictable enough for the frontend to build against
 
 ---

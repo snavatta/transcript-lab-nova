@@ -1,8 +1,10 @@
-import { get, post, del, downloadUrl } from './client';
+import { get, post, del, downloadUrl, put } from './client';
 import type {
   ProjectSummaryDto,
   ProjectDetailDto,
+  RetryProjectRequest,
   TranscriptDto,
+  UpdateProjectRequest,
 } from '../types';
 
 export interface ProjectListParams {
@@ -26,9 +28,10 @@ export const projectsApi = {
   list: (params: ProjectListParams = {}) =>
     get<ProjectSummaryDto[]>(`/projects${buildQueryString(params)}`),
   getById: (id: string) => get<ProjectDetailDto>(`/projects/${id}`),
+  update: (id: string, data: UpdateProjectRequest) => put<ProjectDetailDto>(`/projects/${id}`, data),
   remove: (id: string) => del(`/projects/${id}`),
   queue: (id: string) => post<ProjectDetailDto>(`/projects/${id}/queue`),
-  retry: (id: string) => post<ProjectDetailDto>(`/projects/${id}/retry`),
+  retry: (id: string, data?: RetryProjectRequest) => post<ProjectDetailDto>(`/projects/${id}/retry`, data),
   cancel: (id: string) => post<ProjectDetailDto>(`/projects/${id}/cancel`),
   getTranscript: (id: string) => get<TranscriptDto>(`/projects/${id}/transcript`),
   mediaUrl: (id: string) => downloadUrl(`/projects/${id}/media`),

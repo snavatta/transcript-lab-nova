@@ -8,7 +8,6 @@ import {
   Button,
   Skeleton,
   Paper,
-  Chip,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
@@ -16,7 +15,6 @@ import FolderIcon from '@mui/icons-material/Folder';
 import QueueIcon from '@mui/icons-material/Queue';
 import CheckCircleIcon from '@mui/icons-material/CheckCircle';
 import ErrorIcon from '@mui/icons-material/Error';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { useLocation } from 'wouter';
 import TopBar from '../components/shell/TopBar';
 import CreateFolderDialog from '../components/folders/CreateFolderDialog';
@@ -30,12 +28,11 @@ export default function DashboardPage() {
   const [, navigate] = useLocation();
 
   const loading = foldersLoading || queueLoading;
-  const draftsCount = queue?.drafts.length ?? 0;
   const queuedCount = queue?.queued.length ?? 0;
   const processingCount = queue?.processing.length ?? 0;
   const completedCount = queue?.completed.length ?? 0;
   const failedCount = queue?.failed.length ?? 0;
-  const totalProjects = draftsCount + queuedCount + processingCount + completedCount + failedCount;
+  const totalProjects = (folders ?? []).reduce((sum, folder) => sum + folder.projectCount, 0);
 
   const recentProjects = [
     ...(queue?.completed ?? []),
@@ -46,7 +43,7 @@ export default function DashboardPage() {
 
   const stats = [
     { label: 'Folders', value: folders?.length ?? 0, icon: <FolderIcon />, color: '#0b6efd', path: '/folders' },
-    { label: 'Projects', value: totalProjects, icon: <QueueIcon />, color: '#0f7b6c', path: '/queue' },
+    { label: 'Projects', value: totalProjects, icon: <QueueIcon />, color: '#0f7b6c', path: '/projects' },
     { label: 'Completed', value: completedCount, icon: <CheckCircleIcon />, color: '#1dbf73', path: '/queue' },
     { label: 'Failed', value: failedCount, icon: <ErrorIcon />, color: '#e65353', path: '/queue' },
   ];
@@ -71,33 +68,13 @@ export default function DashboardPage() {
         }}
       >
         <Grid container spacing={3} alignItems="center">
-          <Grid size={{ xs: 12, md: 8 }}>
-            <Chip
-              icon={<AutoAwesomeIcon />}
-              label="Nova Overview"
-              size="small"
-              variant="outlined"
-              sx={{
-                mb: 1.5,
-                borderColor: alpha('#3aa0c8', 0.28),
-                color: 'secondary.dark',
-                bgcolor: alpha('#3aa0c8', 0.05),
-              }}
-            />
+          <Grid size={{ xs: 12, md: 8 }}>           
             <Typography variant="h4" sx={{ mb: 1 }}>
               TranscriptLab Nova
             </Typography>
             <Typography variant="body1" color="text.secondary" sx={{ maxWidth: 640, mb: 3 }}>
               Organize lectures by folder, queue uploads in batches, and move from processing to review with a clear, station-like workspace.
-            </Typography>
-            <Box sx={{ display: 'flex', gap: 1.5, flexWrap: 'wrap' }}>
-              <Button variant="contained" onClick={() => navigate('/folders')}>
-                Open folders
-              </Button>
-              <Button variant="outlined" onClick={() => navigate('/queue')}>
-                Inspect queue
-              </Button>
-            </Box>
+            </Typography>            
           </Grid>
           <Grid size={{ xs: 12, md: 4 }}>
             <Box

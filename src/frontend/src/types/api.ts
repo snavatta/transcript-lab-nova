@@ -56,6 +56,26 @@ export interface ProjectSettingsDto {
   diarizationEnabled: boolean;
 }
 
+export interface UpdateProjectRequest {
+  name: string;
+}
+
+export interface RetryProjectRequest {
+  settings?: ProjectSettingsDto | null;
+}
+
+export interface ProjectDebugTimingsDto {
+  totalElapsedMs: number | null;
+  preparationElapsedMs: number | null;
+  inspectElapsedMs: number | null;
+  extractElapsedMs: number | null;
+  normalizeElapsedMs: number | null;
+  transcriptionElapsedMs: number | null;
+  persistElapsedMs: number | null;
+  transcriptionRealtimeFactor: number | null;
+  totalRealtimeFactor: number | null;
+}
+
 export interface TranscriptSegmentDto {
   startMs: number;
   endMs: number;
@@ -84,6 +104,7 @@ export interface ProjectSummaryDto {
   progress: number | null;
   mediaType: MediaType;
   durationMs: number | null;
+  transcriptionElapsedMs: number | null;
   totalSizeBytes: number | null;
   createdAtUtc: string;
   updatedAtUtc: string;
@@ -97,10 +118,12 @@ export interface ProjectDetailDto extends ProjectSummaryDto {
   errorMessage: string | null;
   settings: ProjectSettingsDto;
   mediaUrl: string;
+  audioPreviewUrl?: string | null;
   transcriptAvailable: boolean;
   availableExports: string[];
   originalFileSizeBytes: number | null;
   workspaceSizeBytes: number | null;
+  debugTimings?: ProjectDebugTimingsDto | null;
 }
 
 export interface QueueItemDto extends ProjectSummaryDto {
@@ -109,7 +132,6 @@ export interface QueueItemDto extends ProjectSummaryDto {
 }
 
 export interface QueueOverviewDto {
-  drafts: QueueItemDto[];
   queued: QueueItemDto[];
   processing: QueueItemDto[];
   completed: QueueItemDto[];
@@ -133,6 +155,64 @@ export interface TranscriptionEngineOptionDto {
 
 export interface TranscriptionOptionsDto {
   engines: TranscriptionEngineOptionDto[];
+}
+
+export interface TranscriptionModelEntryDto {
+  engine: string;
+  model: string;
+  isInstalled: boolean;
+  installPath: string | null;
+  canDownload: boolean;
+  canRedownload: boolean;
+  canProbe: boolean;
+  probeState: string;
+  probeMessage: string;
+}
+
+export interface TranscriptionModelCatalogDto {
+  models: TranscriptionModelEntryDto[];
+}
+
+export interface ManageTranscriptionModelRequest {
+  engine: string;
+  model: string;
+  action: string;
+}
+
+export interface RuntimeDiagnosticsDto {
+  collectedAtUtc: string;
+  processId: number;
+  processorCount: number;
+  uptimeMs: number;
+  cpuUsagePercent: number;
+  workingSetBytes: number;
+  privateMemoryBytes: number;
+  managedHeapBytes: number;
+}
+
+export interface DiagnosticsEngineDto {
+  engine: string;
+  isAvailable: boolean;
+  models: string[];
+  availabilityError: string | null;
+}
+
+export interface ProjectStorageDiagnosticsDto {
+  projectId: string;
+  folderId: string;
+  folderName: string;
+  projectName: string;
+  status: ProjectStatus;
+  originalFileSizeBytes: number | null;
+  workspaceSizeBytes: number | null;
+  totalSizeBytes: number | null;
+  updatedAtUtc: string;
+}
+
+export interface DiagnosticsDto {
+  runtime: RuntimeDiagnosticsDto;
+  engines: DiagnosticsEngineDto[];
+  projects: ProjectStorageDiagnosticsDto[];
 }
 
 export interface UpdateGlobalSettingsRequest {

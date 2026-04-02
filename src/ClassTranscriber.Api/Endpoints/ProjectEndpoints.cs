@@ -1,5 +1,6 @@
 using ClassTranscriber.Api.Contracts;
 using ClassTranscriber.Api.Services;
+using System.Text.Json;
 
 namespace ClassTranscriber.Api.Endpoints;
 
@@ -24,6 +25,22 @@ public static class ProjectEndpoints
         })
         .WithName("GetProject");
 
+        group.MapPut("/{id:guid}", async (Guid id, UpdateProjectRequest request, IProjectService service, CancellationToken ct) =>
+        {
+            var name = request.Name?.Trim();
+            if (string.IsNullOrWhiteSpace(name) || name.Length > 120)
+            {
+                return Results.BadRequest(new ErrorResponse(
+                    "validation_error",
+                    "Project name is required and must be between 1 and 120 characters."));
+            }
+
+            var normalizedRequest = request with { Name = name };
+            var project = await service.UpdateAsync(id, normalizedRequest, ct);
+            return project is null ? Results.NotFound() : Results.Ok(project);
+        })
+        .WithName("UpdateProject");
+
         group.MapDelete("/{id:guid}", async (Guid id, IProjectService service, CancellationToken ct) =>
         {
             var deleted = await service.DeleteAsync(id, ct);
@@ -33,6 +50,9 @@ public static class ProjectEndpoints
 
         group.MapPost("/{id:guid}/queue", async (Guid id, IProjectService service, CancellationToken ct) =>
         {
+            if (await service.GetByIdAsync(id, ct) is null)
+                return Results.NotFound();
+
             var project = await service.QueueAsync(id, ct);
             if (project is null)
                 return Results.Conflict(new ErrorResponse("invalid_state", "Project cannot be queued in its current state."));
@@ -40,9 +60,36 @@ public static class ProjectEndpoints
         })
         .WithName("QueueProject");
 
-        group.MapPost("/{id:guid}/retry", async (Guid id, IProjectService service, CancellationToken ct) =>
+        group.MapPost("/{id:guid}/retry", async (Guid id, HttpRequest httpRequest, IProjectService service, CancellationToken ct) =>
         {
-            var project = await service.RetryAsync(id, ct);
+            if (await service.GetByIdAsync(id, ct) is null)
+                return Results.NotFound();
+
+            RetryProjectRequest? request = null;
+            var hasRequestBody = httpRequest.ContentLength.GetValueOrDefault() > 0
+                || !string.IsNullOrWhiteSpace(httpRequest.ContentType);
+            if (hasRequestBody)
+            {
+                try
+                {
+                    request = await httpRequest.ReadFromJsonAsync<RetryProjectRequest>(cancellationToken: ct);
+                }
+                catch (JsonException)
+                {
+                    return Results.BadRequest(new ErrorResponse("validation_error", "Invalid retry settings JSON."));
+                }
+            }
+
+            ProjectDetailDto? project;
+            try
+            {
+                project = await service.RetryAsync(id, request, ct);
+            }
+            catch (ArgumentException ex)
+            {
+                return Results.BadRequest(new ErrorResponse("validation_error", ex.Message));
+            }
+
             if (project is null)
                 return Results.Conflict(new ErrorResponse("invalid_state", "Project cannot be retried in its current state."));
             return Results.Ok(project);
@@ -51,6 +98,9 @@ public static class ProjectEndpoints
 
         group.MapPost("/{id:guid}/cancel", async (Guid id, IProjectService service, CancellationToken ct) =>
         {
+            if (await service.GetByIdAsync(id, ct) is null)
+                return Results.NotFound();
+
             var project = await service.CancelAsync(id, ct);
             if (project is null)
                 return Results.Conflict(new ErrorResponse("invalid_state", "Project cannot be cancelled in its current state."));

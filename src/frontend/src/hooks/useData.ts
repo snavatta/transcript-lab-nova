@@ -1,5 +1,5 @@
 import useSWR from 'swr';
-import { foldersApi, projectsApi, queueApi, settingsApi } from '../api';
+import { diagnosticsApi, foldersApi, projectsApi, queueApi, settingsApi } from '../api';
 import type { ProjectListParams } from '../api/projects';
 import type { ProjectDetailDto } from '../types';
 
@@ -57,4 +57,12 @@ export function useSettings() {
 
 export function useTranscriptionOptions() {
   return useSWR('settings/options', () => settingsApi.getOptions());
+}
+
+export function useTranscriptionModels() {
+  return useSWR('settings/models', () => settingsApi.getModels());
+}
+
+export function useDiagnostics() {
+  return useSWR('diagnostics', () => diagnosticsApi.get(), { refreshInterval: 5000 });
 }

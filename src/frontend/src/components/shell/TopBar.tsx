@@ -1,5 +1,5 @@
 import { alpha } from '@mui/material/styles';
-import { AppBar, Toolbar, Typography, Box, Breadcrumbs, Link as MuiLink, Chip } from '@mui/material';
+import { AppBar, Toolbar, Typography, Box, Breadcrumbs, Link as MuiLink } from '@mui/material';
 import { useLocation } from 'wouter';
 import { CONTENT_MAX_WIDTH } from './AppShell';
 import { DRAWER_WIDTH } from './SidebarNav';
@@ -32,7 +32,7 @@ export default function TopBar({ title, breadcrumbs, actions }: Props) {
         backgroundColor: alpha('#ffffff', 0.94),
       }}
     >
-      <Toolbar sx={{ minHeight: 72, px: { xs: 2, md: 4 } }}>
+      <Toolbar sx={{ height: 72, px: { xs: 2, md: 4 } }}>
         <Box
           sx={{
             width: '100%',
@@ -73,16 +73,6 @@ export default function TopBar({ title, breadcrumbs, actions }: Props) {
               ) : (
                 title
               )}
-              <Chip
-                label="Nova"
-                size="small"
-                variant="outlined"
-                sx={{
-                  borderColor: alpha('#3aa0c8', 0.28),
-                  color: 'secondary.dark',
-                  bgcolor: alpha('#3aa0c8', 0.05),
-                }}
-              />
             </Box>
           </Box>
           {actions && <Box sx={{ display: 'flex', gap: 1, flexShrink: 0 }}>{actions}</Box>}

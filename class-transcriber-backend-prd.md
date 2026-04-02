@@ -140,11 +140,13 @@ Should support:
 The backend must support:
 
 - CRUD-style folder operations
+- project rename/update of editable metadata such as display name
 - Uploading one or more files into a folder
 - Automatic project creation per uploaded file
 - Queueing projects for processing
 - Background transcription processing
 - Media extraction/preparation
+- Diagnostics reporting for runtime metrics, engine availability, and per-project disk usage
 - Retrieval of project/transcript metadata
 - Media playback access
 - Export generation for PDF, MD, TXT, HTML
@@ -238,6 +240,7 @@ Required fields:
 - `Status`
 - `Progress`
 - `DurationMs`
+- `TranscriptionElapsedMs`
 - `CreatedAtUtc`
 - `UpdatedAtUtc`
 - `QueuedAtUtc`
@@ -248,6 +251,13 @@ Required fields:
 - `OriginalFileSizeBytes`
 - `WorkspaceSizeBytes`
 - `TotalSizeBytes`
+
+Optional diagnostic fields:
+- `TotalProcessingElapsedMs`
+- `MediaInspectionElapsedMs`
+- `AudioExtractionElapsedMs`
+- `AudioNormalizationElapsedMs`
+- `ResultPersistenceElapsedMs`
 
 ## 8.3 Project settings entity/value object
 Required fields:
@@ -322,8 +332,17 @@ Note for MVP:
 ## Suggested engine enum for MVP
 - `Whisper`
 
-Optional future:
+Current backend extension points may additionally expose:
 - `SherpaOnnx`
+- `SherpaOnnxSenseVoice`
+- `WhisperNet`
+- `WhisperNetCuda`
+- `WhisperNetOpenVino`
+
+Implementation note:
+- `SherpaOnnx` may run on a local .NET runtime path or isolated helper worker as long as it stays behind the transcription engine abstraction.
+- `SherpaOnnxSenseVoice` may run on the same local .NET runtime path or isolated helper worker pattern, but should remain a distinct engine option from Whisper-backed `SherpaOnnx`.
+- `WhisperNet` CPU, `WhisperNetCuda`, and `WhisperNetOpenVino` should run through isolated helper worker processes so runtime selection remains per project/job.
 
 ## Suggested model values for MVP
 - `tiny`
@@ -424,6 +443,8 @@ Validation should be practical, not overly strict.
 
 The backend should remain tolerant and rely on processing failure handling when needed.
 
+Upload size limits must be configurable at runtime. The default deployment configuration should accept large single-request class recordings rather than keeping ASP.NET Core's smaller default multipart ceiling.
+
 ---
 
 ## 12. Media processing requirements
@@ -486,8 +507,9 @@ Required output:
 ## 13.4 Diarization behavior
 For MVP:
 - backend must accept diarization on/off in settings
-- if not implemented yet in the engine, backend may return no speaker labels
-- the code structure should not block future diarization support
+- when diarization is enabled, the backend should attempt to assign speaker labels to transcript segments using local processing
+- if diarization cannot confidently separate speakers, returning a single consistent speaker label is acceptable
+- the code structure should keep diarization as an optional post-processing concern behind the transcription pipeline
 
 Do not over-engineer diarization in MVP.
 
@@ -586,6 +608,8 @@ Returns folder detail with summary/project counts.
 ### GET `/api/projects/{id}`
 Returns full project detail.
 
+If recorded, the response may include a diagnostic timing block for frontend debug display and engine/performance comparison.
+
 ### GET `/api/projects`
 Supports filtering by:
 - folder id
@@ -605,6 +629,11 @@ Behavior:
 
 ### POST `/api/projects/{id}/retry`
 Retries a failed project.
+
+Must support:
+- retrying with the project's existing settings when no override is provided
+- applying an optional settings override before the project is returned to `Queued`
+- validating override settings against engines/models currently available in the runtime
 
 ### POST `/api/projects/{id}/cancel`
 Required in MVP.
@@ -631,6 +660,15 @@ Response should include created project summaries.
 
 This is a key MVP endpoint.
 
+### GET `/api/diagnostics`
+Returns a diagnostics snapshot for the current backend process.
+
+Must include:
+- process CPU usage
+- process memory usage
+- runtime availability for registered transcription engines
+- per-project storage usage values already tracked by the backend
+
 ---
 
 ## 15.4 Queue and jobs
@@ -652,6 +690,7 @@ Each queue item should include at minimum:
 - status
 - progress
 - durationMs if known
+- transcriptionElapsedMs if known
 - selected engine
 - selected model
 - createdAtUtc
@@ -676,6 +715,14 @@ Requirements:
 - allow range requests if practical for seeking
 
 Range support is highly desirable for media playback.
+
+### GET `/api/projects/{id}/audio`
+Streams or serves the extracted or otherwise prepared transcription audio when that derived file exists.
+
+Requirements:
+- return `404` if no derived audio is currently available
+- return `audio/wav`
+- allow browser playback and seeking when practical
 
 ---
 
@@ -721,9 +768,18 @@ Returns global defaults.
 ### PUT `/api/settings`
 Updates global defaults.
 
+### GET `/api/settings/models`
+Returns the model-management catalog for known engines/models, including filesystem install state, install path, and active probe results for installed models.
+
+### POST `/api/settings/models/manage`
+Accepts an engine/model/action payload and returns the updated model-management entry.
+
 Behavior:
 - applies only to future uploads
 - does not mutate existing projects
+- installed models should be actively probed through the real engine/runtime so users can diagnose missing runtimes or broken local model assets without uploading media
+- model-management actions must support `Download`, `Redownload`, and `Probe`
+- model-management responses must make it clear whether the failure is missing files, runtime unavailability, or probe execution failure
 
 ---
 
@@ -980,6 +1036,7 @@ Includes summary fields plus:
 - settings
 - transcript availability
 - media URL
+- optional derived audio preview URL for video projects when extracted/prepared audio exists
 - error message
 - completed timestamps
 - export availability

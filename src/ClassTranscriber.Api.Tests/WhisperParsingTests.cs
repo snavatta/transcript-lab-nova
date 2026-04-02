@@ -1,6 +1,7 @@
 using System.Reflection;
 using ClassTranscriber.Api.Transcription;
 using FluentAssertions;
+using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 
@@ -82,6 +83,49 @@ public class WhisperParsingTests
                 Directory.Delete(modelsPath, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task ResolveModelPathAsync_LogsDownloadProgress()
+    {
+        var modelsPath = Path.Combine(Path.GetTempPath(), $"whisper-models-{Guid.NewGuid():N}");
+        var options = Options.Create(new WhisperOptions
+        {
+            ModelsPath = modelsPath,
+            AutoDownloadModels = true,
+            ModelDownloadBaseUrl = "https://example.test/models"
+        });
+
+        var downloadedBytes = new byte[128 * 1024];
+        Array.Fill(downloadedBytes, (byte)42);
+        var logger = new ListLogger<WhisperCliTranscriptionEngine>();
+        var engine = new WhisperCliTranscriptionEngine(
+            options,
+            new StubHttpClientFactory(new StubHttpMessageHandler(_ =>
+                new HttpResponseMessage(System.Net.HttpStatusCode.OK)
+                {
+                    Content = new ByteArrayContent(downloadedBytes)
+                })),
+            logger);
+
+        var method = typeof(WhisperCliTranscriptionEngine)
+            .GetMethod("ResolveModelPathAsync", BindingFlags.NonPublic | BindingFlags.Instance);
+        method.Should().NotBeNull();
+
+        try
+        {
+            var task = (Task<string>)method!.Invoke(engine, ["medium", CancellationToken.None])!;
+            _ = await task;
+
+            logger.Messages.Should().Contain(message => message.Contains("Downloading Whisper model medium. size=", StringComparison.Ordinal));
+            logger.Messages.Should().Contain(message => message.Contains("Downloading Whisper model medium: 10%", StringComparison.Ordinal));
+            logger.Messages.Should().Contain(message => message.Contains("Downloading Whisper model medium: completed.", StringComparison.Ordinal));
+        }
+        finally
+        {
+            if (Directory.Exists(modelsPath))
+                Directory.Delete(modelsPath, recursive: true);
+        }
+    }
 }
 
 internal sealed class StubHttpClientFactory(HttpMessageHandler handler) : IHttpClientFactory
@@ -93,4 +137,23 @@ internal sealed class StubHttpMessageHandler(Func<HttpRequestMessage, HttpRespon
 {
     protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
         => Task.FromResult(responseFactory(request));
+}
+
+internal sealed class ListLogger<T> : ILogger<T>
+{
+    public List<string> Messages { get; } = [];
+
+    public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+    public bool IsEnabled(LogLevel logLevel) => true;
+
+    public void Log<TState>(
+        LogLevel logLevel,
+        EventId eventId,
+        TState state,
+        Exception? exception,
+        Func<TState, Exception?, string> formatter)
+    {
+        Messages.Add(formatter(state, exception));
+    }
 }

@@ -115,6 +115,12 @@ namespace ClassTranscriber.Api.Persistence.Migrations
                         .ValueGeneratedOnAdd()
                         .HasColumnType("TEXT");
 
+                    b.Property<long?>("AudioExtractionElapsedMs")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("AudioNormalizationElapsedMs")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime?>("CompletedAtUtc")
                         .HasColumnType("TEXT");
 
@@ -138,6 +144,9 @@ namespace ClassTranscriber.Api.Persistence.Migrations
 
                     b.Property<Guid>("FolderId")
                         .HasColumnType("TEXT");
+
+                    b.Property<long?>("MediaInspectionElapsedMs")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("MediaPath")
                         .IsRequired()
@@ -168,6 +177,9 @@ namespace ClassTranscriber.Api.Persistence.Migrations
                     b.Property<DateTime?>("QueuedAtUtc")
                         .HasColumnType("TEXT");
 
+                    b.Property<long?>("ResultPersistenceElapsedMs")
+                        .HasColumnType("INTEGER");
+
                     b.Property<DateTime?>("StartedAtUtc")
                         .HasColumnType("TEXT");
 
@@ -181,7 +193,13 @@ namespace ClassTranscriber.Api.Persistence.Migrations
                         .HasMaxLength(500)
                         .HasColumnType("TEXT");
 
+                    b.Property<long?>("TotalProcessingElapsedMs")
+                        .HasColumnType("INTEGER");
+
                     b.Property<long?>("TotalSizeBytes")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<long?>("TranscriptionElapsedMs")
                         .HasColumnType("INTEGER");
 
                     b.Property<DateTime>("UpdatedAtUtc")

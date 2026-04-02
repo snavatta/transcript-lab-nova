@@ -1,6 +1,10 @@
 const ENGINE_MODEL_OPTIONS = {
   Whisper: ['tiny', 'base', 'small', 'medium', 'large'],
   SherpaOnnx: ['small', 'medium'],
+  SherpaOnnxSenseVoice: ['small'],
+  WhisperNet: ['tiny', 'base', 'small', 'medium', 'large'],
+  WhisperNetCuda: ['tiny', 'base', 'small', 'medium', 'large'],
+  WhisperNetOpenVino: ['tiny', 'base', 'small', 'medium', 'large'],
 } as const;
 
 export const TRANSCRIPTION_ENGINES = Object.keys(ENGINE_MODEL_OPTIONS) as Array<keyof typeof ENGINE_MODEL_OPTIONS>;

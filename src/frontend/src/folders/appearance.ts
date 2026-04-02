@@ -19,6 +19,27 @@ function formatFolderIconLabel(iconKey: string) {
 
 const iconKeys = muiIconNames as string[];
 
+const CURATED_FOLDER_ICON_KEYS = [
+  'Folder',
+  'School',
+  'MenuBook',
+  'AutoStories',
+  'Science',
+  'Biotech',
+  'Calculate',
+  'Psychology',
+  'HistoryEdu',
+  'Language',
+  'Public',
+  'Computer',
+  'Code',
+  'Mic',
+  'Movie',
+  'MusicNote',
+  'Assignment',
+  'Description',
+] as const;
+
 export const FOLDER_ICON_OPTIONS: readonly FolderIconOption[] = [
   DEFAULT_FOLDER_ICON_KEY,
   ...iconKeys.filter((iconKey) => iconKey !== DEFAULT_FOLDER_ICON_KEY),
@@ -49,6 +70,19 @@ export const FOLDER_COLOR_SWATCHES = [
 export function getFolderIconOption(iconKey?: string) {
   return folderIconOptionMap.get(iconKey ?? DEFAULT_FOLDER_ICON_KEY)
     ?? folderIconOptionMap.get(DEFAULT_FOLDER_ICON_KEY)!;
+}
+
+export function getFolderIconPickerOptions(selectedIconKey?: string) {
+  const selectedOption = selectedIconKey ? folderIconOptionMap.get(selectedIconKey) : null;
+  const curatedOptions = CURATED_FOLDER_ICON_KEYS
+    .map((iconKey) => folderIconOptionMap.get(iconKey))
+    .filter((option): option is FolderIconOption => Boolean(option));
+
+  if (selectedOption && !curatedOptions.some((option) => option.key === selectedOption.key)) {
+    return [selectedOption, ...curatedOptions];
+  }
+
+  return curatedOptions;
 }
 
 export function isSupportedFolderIconKey(iconKey?: string) {

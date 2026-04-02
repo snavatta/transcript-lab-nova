@@ -1,8 +1,7 @@
 import {
   Box, Typography, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Paper, LinearProgress, Button, Skeleton, Tabs, Tab,
+  TableHead, TableRow, Paper, Button, Skeleton, Tabs, Tab,
 } from '@mui/material';
-import PlayArrowIcon from '@mui/icons-material/PlayArrow';
 import ReplayIcon from '@mui/icons-material/Replay';
 import CancelIcon from '@mui/icons-material/Cancel';
 import { useState, useCallback } from 'react';
@@ -10,39 +9,22 @@ import { useLocation } from 'wouter';
 import TopBar from '../components/shell/TopBar';
 import ProjectStatusChip from '../components/common/ProjectStatusChip';
 import EmptyState from '../components/common/EmptyState';
+import RetryProjectDialog from '../components/projects/RetryProjectDialog';
 import { useQueue } from '../hooks/useData';
 import { projectsApi } from '../api';
 import { useNotification } from '../components/notifications';
 import { useSWRConfig } from 'swr';
 import { formatDuration, formatDate, formatBytes } from '../utils/format';
+import { formatEngineLabel } from '../utils/transcription';
 import type { QueueItemDto } from '../types';
 
 export default function QueuePage() {
   const { data: queue, isLoading } = useQueue();
   const [tab, setTab] = useState(0);
+  const [retryProjectId, setRetryProjectId] = useState<string | null>(null);
   const [, navigate] = useLocation();
   const { notify } = useNotification();
   const { mutate } = useSWRConfig();
-
-  const handleQueue = useCallback(async (id: string) => {
-    try {
-      await projectsApi.queue(id);
-      await mutate('queue');
-      notify('Project queued');
-    } catch {
-      notify('Failed to queue', 'error');
-    }
-  }, [mutate, notify]);
-
-  const handleRetry = useCallback(async (id: string) => {
-    try {
-      await projectsApi.retry(id);
-      await mutate('queue');
-      notify('Project re-queued');
-    } catch {
-      notify('Failed to retry', 'error');
-    }
-  }, [mutate, notify]);
 
   const handleCancel = useCallback(async (id: string) => {
     try {
@@ -54,8 +36,15 @@ export default function QueuePage() {
     }
   }, [mutate, notify]);
 
+  const allItems = [
+    ...(queue?.processing ?? []),
+    ...(queue?.queued ?? []),
+    ...(queue?.completed ?? []),
+    ...(queue?.failed ?? []),
+  ];
+
   const sections = [
-    { label: 'Drafts', items: queue?.drafts ?? [] },
+    { label: 'All', items: allItems },
     { label: 'Processing', items: queue?.processing ?? [] },
     { label: 'Queued', items: queue?.queued ?? [] },
     { label: 'Completed', items: queue?.completed ?? [] },
@@ -79,7 +68,11 @@ export default function QueuePage() {
           </Tabs>
 
           {currentItems.length === 0 ? (
-            <EmptyState title={`No ${sections[tab].label.toLowerCase()} jobs`} />
+            <EmptyState
+              title={sections[tab].label === 'All'
+                ? 'No jobs'
+                : `No ${sections[tab].label.toLowerCase()} jobs`}
+            />
           ) : (
             <TableContainer component={Paper} variant="outlined">
               <Table size="small">
@@ -90,6 +83,7 @@ export default function QueuePage() {
                     <TableCell>Status</TableCell>
                     <TableCell>Engine</TableCell>
                     <TableCell>Duration</TableCell>
+                    <TableCell>Transcribed In</TableCell>
                     <TableCell>Size</TableCell>
                     <TableCell>Created</TableCell>
                     <TableCell>Actions</TableCell>
@@ -108,34 +102,30 @@ export default function QueuePage() {
                       </TableCell>
                       <TableCell>{item.folderName}</TableCell>
                       <TableCell>
-                        <Box>
-                          <ProjectStatusChip status={item.status} />
-                          {(item.status === 'PreparingMedia' || item.status === 'Transcribing') && item.progress != null && (
-                            <LinearProgress variant="determinate" value={item.progress} sx={{ mt: 0.5, width: 80 }} />
-                          )}
-                        </Box>
+                        <ProjectStatusChip status={item.status} />
                       </TableCell>
                       <TableCell>
-                        <Typography variant="caption">{item.engine} / {item.model}</Typography>
+                        <Typography variant="caption">{formatEngineLabel(item.engine)} / {item.model}</Typography>
                       </TableCell>
                       <TableCell>{formatDuration(item.durationMs)}</TableCell>
+                      <TableCell>{formatDuration(item.transcriptionElapsedMs)}</TableCell>
                       <TableCell>{formatBytes(item.totalSizeBytes)}</TableCell>
                       <TableCell>{formatDate(item.createdAtUtc)}</TableCell>
                       <TableCell>
                         <Box sx={{ display: 'flex', gap: 0.5 }} onClick={(e) => e.stopPropagation()}>
-                          {item.status === 'Draft' && (
-                            <Button size="small" startIcon={<PlayArrowIcon />} onClick={() => handleQueue(item.id)}>
-                              Queue
-                            </Button>
-                          )}
                           {item.status === 'Failed' && (
-                            <Button size="small" startIcon={<ReplayIcon />} onClick={() => handleRetry(item.id)}>
+                            <Button size="small" startIcon={<ReplayIcon />} onClick={() => setRetryProjectId(item.id)}>
                               Retry
                             </Button>
                           )}
                           {item.status === 'Queued' && (
                             <Button size="small" startIcon={<CancelIcon />} onClick={() => handleCancel(item.id)}>
                               Cancel
+                            </Button>
+                          )}
+                          {(item.status === 'PreparingMedia' || item.status === 'Transcribing') && (
+                            <Button size="small" color="warning" startIcon={<CancelIcon />} onClick={() => handleCancel(item.id)}>
+                              Stop
                             </Button>
                           )}
                         </Box>
@@ -147,6 +137,14 @@ export default function QueuePage() {
             </TableContainer>
           )}
         </>
+      )}
+
+      {retryProjectId && (
+        <RetryProjectDialog
+          open
+          projectId={retryProjectId}
+          onClose={() => setRetryProjectId(null)}
+        />
       )}
     </>
   );

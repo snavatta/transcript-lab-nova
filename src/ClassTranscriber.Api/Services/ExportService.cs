@@ -37,7 +37,7 @@ public class ExportService : IExportService
             "txt" => GenerateTxt(project, segments, showTimestamps, safeName),
             "md" => GenerateMarkdown(project, segments, showTimestamps, safeName),
             "html" => GenerateHtml(project, segments, showTimestamps, safeName),
-            "pdf" => GenerateHtmlAsPdf(project, segments, showTimestamps, safeName),
+            "pdf" => GeneratePdf(project, segments, showTimestamps, safeName),
             _ => null,
         };
     }
@@ -116,12 +116,11 @@ public class ExportService : IExportService
         return new ExportResult(Encoding.UTF8.GetBytes(sb.ToString()), "text/html; charset=utf-8", $"{safeName}.html");
     }
 
-    private static ExportResult GenerateHtmlAsPdf(Domain.Project project, TranscriptSegmentDto[] segments, bool showTimestamps, string safeName)
+    private static ExportResult GeneratePdf(Domain.Project project, TranscriptSegmentDto[] segments, bool showTimestamps, string safeName)
     {
-        // For MVP, serve PDF as HTML with print-friendly styling.
-        // A proper HTML-to-PDF library can be integrated later.
-        var htmlResult = GenerateHtml(project, segments, showTimestamps, safeName);
-        return new ExportResult(htmlResult.Content, "application/pdf", $"{safeName}.pdf");
+        var lines = BuildExportLines(project, segments, showTimestamps);
+        var pdf = BuildPdfDocument(lines);
+        return new ExportResult(pdf, "application/pdf", $"{safeName}.pdf");
     }
 
     private static string FormatTime(long ms)
@@ -140,5 +139,184 @@ public class ExportService : IExportService
         var invalid = Path.GetInvalidFileNameChars();
         var sanitized = new string(name.Select(c => invalid.Contains(c) ? '_' : c).ToArray());
         return string.IsNullOrWhiteSpace(sanitized) ? "transcript" : sanitized;
+    }
+
+    private static List<string> BuildExportLines(Domain.Project project, TranscriptSegmentDto[] segments, bool showTimestamps)
+    {
+        var lines = new List<string>
+        {
+            project.Name,
+            "",
+            $"Folder: {project.Folder?.Name ?? "-"}",
+            $"Original file: {project.OriginalFileName}",
+            $"Processed: {project.CompletedAtUtc?.ToString("O") ?? "-"}",
+            "",
+        };
+
+        if (segments.Length == 0)
+        {
+            lines.AddRange((project.Transcript?.PlainText ?? string.Empty)
+                .Split('\n', StringSplitOptions.TrimEntries)
+                .Select(line => line.Replace("\r", string.Empty)));
+            return lines;
+        }
+
+        foreach (var segment in segments)
+        {
+            var prefix = string.Empty;
+            if (showTimestamps)
+                prefix += $"[{FormatTime(segment.StartMs)}] ";
+            if (!string.IsNullOrWhiteSpace(segment.Speaker))
+                prefix += $"{segment.Speaker}: ";
+
+            lines.Add(prefix + segment.Text);
+        }
+
+        return lines;
+    }
+
+    private static byte[] BuildPdfDocument(IReadOnlyList<string> lines)
+    {
+        const int maxCharsPerLine = 92;
+        const int linesPerPage = 48;
+
+        var wrappedLines = lines
+            .SelectMany(line => WrapLine(line, maxCharsPerLine))
+            .DefaultIfEmpty(string.Empty)
+            .ToArray();
+
+        var pageCount = (int)Math.Ceiling(wrappedLines.Length / (double)linesPerPage);
+        var objectCount = 3 + (pageCount * 2);
+        var fontObjectNumber = objectCount;
+        var offsets = new long[objectCount + 1];
+
+        using var stream = new MemoryStream();
+        WriteAscii(stream, "%PDF-1.4\n");
+
+        WriteObject(stream, offsets, 1, () =>
+            WriteAscii(stream, "<< /Type /Catalog /Pages 2 0 R >>\n"));
+
+        WriteObject(stream, offsets, 2, () =>
+        {
+            var kids = Enumerable.Range(0, pageCount)
+                .Select(index => $"{3 + (index * 2)} 0 R");
+            WriteAscii(stream, $"<< /Type /Pages /Kids [{string.Join(" ", kids)}] /Count {pageCount} >>\n");
+        });
+
+        for (var pageIndex = 0; pageIndex < pageCount; pageIndex += 1)
+        {
+            var pageObjectNumber = 3 + (pageIndex * 2);
+            var contentObjectNumber = pageObjectNumber + 1;
+            var pageLines = wrappedLines
+                .Skip(pageIndex * linesPerPage)
+                .Take(linesPerPage)
+                .ToArray();
+            var content = BuildPdfContentStream(pageLines);
+
+            WriteObject(stream, offsets, pageObjectNumber, () =>
+            {
+                WriteAscii(
+                    stream,
+                    $"<< /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] /Resources << /Font << /F1 {fontObjectNumber} 0 R >> >> /Contents {contentObjectNumber} 0 R >>\n");
+            });
+
+            WriteObject(stream, offsets, contentObjectNumber, () =>
+            {
+                WriteAscii(stream, $"<< /Length {content.Length} >>\nstream\n");
+                stream.Write(content, 0, content.Length);
+                WriteAscii(stream, "\nendstream\n");
+            });
+        }
+
+        WriteObject(stream, offsets, fontObjectNumber, () =>
+            WriteAscii(stream, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica >>\n"));
+
+        var xrefOffset = stream.Position;
+        WriteAscii(stream, $"xref\n0 {objectCount + 1}\n");
+        WriteAscii(stream, "0000000000 65535 f \n");
+
+        for (var objectNumber = 1; objectNumber <= objectCount; objectNumber += 1)
+            WriteAscii(stream, $"{offsets[objectNumber]:D10} 00000 n \n");
+
+        WriteAscii(stream, $"trailer\n<< /Size {objectCount + 1} /Root 1 0 R >>\nstartxref\n{xrefOffset}\n%%EOF");
+        return stream.ToArray();
+    }
+
+    private static byte[] BuildPdfContentStream(IEnumerable<string> lines)
+    {
+        using var stream = new MemoryStream();
+        WriteAscii(stream, "BT\n/F1 10 Tf\n14 TL\n50 742 Td\n");
+
+        foreach (var line in lines)
+            WriteAscii(stream, $"({EscapePdfText(line)}) Tj\nT*\n");
+
+        WriteAscii(stream, "ET\n");
+        return stream.ToArray();
+    }
+
+    private static IEnumerable<string> WrapLine(string line, int width)
+    {
+        if (string.IsNullOrEmpty(line))
+            return [string.Empty];
+
+        var wrapped = new List<string>();
+        var remaining = line.TrimEnd();
+
+        while (remaining.Length > width)
+        {
+            var breakIndex = remaining.LastIndexOf(' ', width);
+            if (breakIndex <= 0)
+                breakIndex = width;
+
+            wrapped.Add(remaining[..breakIndex].TrimEnd());
+            remaining = remaining[breakIndex..].TrimStart();
+        }
+
+        wrapped.Add(remaining);
+        return wrapped;
+    }
+
+    private static string EscapePdfText(string value)
+    {
+        var builder = new StringBuilder(value.Length);
+
+        foreach (var ch in value)
+        {
+            switch (ch)
+            {
+                case '\\':
+                    builder.Append(@"\\");
+                    break;
+                case '(':
+                    builder.Append(@"\(");
+                    break;
+                case ')':
+                    builder.Append(@"\)");
+                    break;
+                case '\r':
+                case '\n':
+                    builder.Append(' ');
+                    break;
+                default:
+                    builder.Append(ch <= 0xFF ? ch : '?');
+                    break;
+            }
+        }
+
+        return builder.ToString();
+    }
+
+    private static void WriteObject(Stream stream, long[] offsets, int objectNumber, Action writeBody)
+    {
+        offsets[objectNumber] = stream.Position;
+        WriteAscii(stream, $"{objectNumber} 0 obj\n");
+        writeBody();
+        WriteAscii(stream, "endobj\n");
+    }
+
+    private static void WriteAscii(Stream stream, string value)
+    {
+        foreach (var ch in value)
+            stream.WriteByte(ch <= 0xFF ? (byte)ch : (byte)'?');
     }
 }

@@ -9,8 +9,8 @@ import FolderAppearanceAvatar from './FolderAppearanceAvatar';
 import {
   DEFAULT_FOLDER_ICON_KEY,
   FOLDER_COLOR_SWATCHES,
-  FOLDER_ICON_OPTIONS,
   getFolderIconOption,
+  getFolderIconPickerOptions,
   normalizeFolderColorHex,
 } from '../../folders/appearance';
 
@@ -37,6 +37,7 @@ export default function FolderEditorFields({
 }: Props) {
   const normalizedColorHex = normalizeFolderColorHex(colorHex);
   const selectedIconOption = getFolderIconOption(iconKey);
+  const iconOptions = getFolderIconPickerOptions(iconKey);
 
   return (
     <Stack spacing={2}>
@@ -53,7 +54,7 @@ export default function FolderEditorFields({
       />
 
       <Autocomplete
-        options={FOLDER_ICON_OPTIONS}
+        options={iconOptions}
         value={selectedIconOption}
         onChange={(_, value) => onIconKeyChange(value?.key ?? DEFAULT_FOLDER_ICON_KEY)}
         isOptionEqualToValue={(option, value) => option.key === value.key}
@@ -64,23 +65,51 @@ export default function FolderEditorFields({
             ? options.filter((option) => option.searchText.includes(normalizedInput))
             : options;
 
-          return filteredOptions.slice(0, 100);
+          return filteredOptions;
         }}
-        renderOption={(props, option) => (
-          <Box component="li" {...props}>
-            <Stack spacing={0.25}>
-              <Typography variant="body2">{option.label}</Typography>
-              <Typography variant="caption" color="text.secondary">
-                {option.key}
-              </Typography>
-            </Stack>
-          </Box>
-        )}
+        renderOption={(props, option) => {
+          const { key, ...optionProps } = props;
+
+          return (
+            <Box component="li" key={key} {...optionProps}>
+              <Stack direction="row" spacing={1.25} alignItems="center">
+                <FolderAppearanceAvatar
+                  iconKey={option.key}
+                  colorHex={normalizedColorHex}
+                  size={32}
+                />
+                <Stack spacing={0.25}>
+                  <Typography variant="body2">{option.label}</Typography>
+                  {option.label !== option.key && (
+                    <Typography variant="caption" color="text.secondary">
+                      {option.key}
+                    </Typography>
+                  )}
+                </Stack>
+              </Stack>
+            </Box>
+          );
+        }}
         renderInput={(params) => (
           <TextField
             {...params}
             label="Folder icon"
-            helperText="Search MUI icon names"
+            helperText="Choose from a small curated icon set"
+            InputProps={{
+              ...params.InputProps,
+              startAdornment: (
+                <>
+                  <Box sx={{ mr: 1, display: 'flex', alignItems: 'center' }}>
+                    <FolderAppearanceAvatar
+                      iconKey={selectedIconOption.key}
+                      colorHex={normalizedColorHex}
+                      size={28}
+                    />
+                  </Box>
+                  {params.InputProps.startAdornment}
+                </>
+              ),
+            }}
           />
         )}
       />

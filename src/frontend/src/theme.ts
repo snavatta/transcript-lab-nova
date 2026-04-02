@@ -69,7 +69,7 @@ let theme = createTheme({
     },
   },
   shape: {
-    borderRadius: 10,
+    borderRadius: 6,
   },
   shadows: [
     'none',
@@ -116,7 +116,7 @@ let theme = createTheme({
       defaultProps: { disableElevation: true },
       styleOverrides: {
         root: {
-          borderRadius: 10,
+          borderRadius: 7,
           paddingInline: 16,
         },
       },
@@ -145,7 +145,7 @@ let theme = createTheme({
       styleOverrides: {
         root: {
           fontWeight: 500,
-          borderRadius: 8,
+          borderRadius: 6,
         },
       },
     },

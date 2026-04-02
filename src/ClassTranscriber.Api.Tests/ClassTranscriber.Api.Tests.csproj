@@ -22,6 +22,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\ClassTranscriber.Api\ClassTranscriber.Api.csproj" />
+    <ProjectReference Include="..\ClassTranscriber.SherpaOnnx.Worker\ClassTranscriber.SherpaOnnx.Worker.csproj" />
   </ItemGroup>
 
 </Project>

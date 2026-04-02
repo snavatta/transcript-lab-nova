@@ -70,11 +70,13 @@ def create_recognizer(sherpa_onnx, model_dir: Path, config: dict, language: str,
         )
 
     if backend == "whisper":
+        # sherpa-onnx whisper backend uses empty string for auto-detection
+        whisper_language = "" if language.lower() == "auto" else language
         return sherpa_onnx.OfflineRecognizer.from_whisper(
             encoder=str(model_dir / config.get("encoder", "encoder.onnx")),
             decoder=str(model_dir / config.get("decoder", "decoder.onnx")),
             tokens=str(model_dir / config.get("tokens", "tokens.txt")),
-            language=language,
+            language=whisper_language,
             task=str(config.get("task", "transcribe")),
             num_threads=num_threads,
             provider=provider,

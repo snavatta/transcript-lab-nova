@@ -28,6 +28,12 @@ public class Project
     public ProjectStatus Status { get; set; }
     public int Progress { get; set; }
     public long? DurationMs { get; set; }
+    public long? TranscriptionElapsedMs { get; set; }
+    public long? TotalProcessingElapsedMs { get; set; }
+    public long? MediaInspectionElapsedMs { get; set; }
+    public long? AudioExtractionElapsedMs { get; set; }
+    public long? AudioNormalizationElapsedMs { get; set; }
+    public long? ResultPersistenceElapsedMs { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
     public DateTime? QueuedAtUtc { get; set; }

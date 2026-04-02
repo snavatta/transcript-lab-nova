@@ -15,14 +15,20 @@ interface Props {
   size?: number;
 }
 
-const iconModules = import.meta.glob<{ default: ComponentType<SvgIconProps> }>(
-  '../../node_modules/@mui/icons-material/*.js',
-);
 const iconComponentCache = new Map<string, ComponentType<SvgIconProps>>();
-
-const FALLBACK_ICON_PATH = `../../node_modules/@mui/icons-material/${DEFAULT_FOLDER_ICON_KEY}.js`;
-const fallbackIconLoader = iconModules[FALLBACK_ICON_PATH]!;
 iconComponentCache.set(DEFAULT_FOLDER_ICON_KEY, FolderIcon);
+
+let iconImportersPromise: Promise<Record<string, () => Promise<{ default: ComponentType<SvgIconProps> }>>> | null = null;
+
+async function getIconImporters() {
+  if (!iconImportersPromise) {
+    iconImportersPromise = import('../../folders/muiIconImporters').then((module) => (
+      module.muiIconImporters as Record<string, () => Promise<{ default: ComponentType<SvgIconProps> }>>
+    ));
+  }
+
+  return iconImportersPromise;
+}
 
 function getResolvedIconKey(iconKey?: string): string {
   if (iconKey && isSupportedFolderIconKey(iconKey)) {
@@ -38,8 +44,9 @@ async function loadIconComponent(iconKey: string) {
     return cachedComponent;
   }
 
-  const modulePath = `../../node_modules/@mui/icons-material/${iconKey}.js`;
-  const loader = iconModules[modulePath] ?? fallbackIconLoader;
+  const iconImporters = await getIconImporters();
+  const fallbackIconLoader = iconImporters[DEFAULT_FOLDER_ICON_KEY];
+  const loader = iconImporters[iconKey] ?? fallbackIconLoader;
   const loadedModule = await loader();
   const loadedComponent = loadedModule.default as ComponentType<SvgIconProps>;
   iconComponentCache.set(iconKey, loadedComponent);

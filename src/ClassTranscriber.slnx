@@ -1,4 +1,6 @@
 <Solution>
   <Project Path="ClassTranscriber.Api.Tests/ClassTranscriber.Api.Tests.csproj" />
   <Project Path="ClassTranscriber.Api/ClassTranscriber.Api.csproj" />
+  <Project Path="ClassTranscriber.SherpaOnnx.Worker/ClassTranscriber.SherpaOnnx.Worker.csproj" />
+  <Project Path="ClassTranscriber.WhisperNet.Worker/ClassTranscriber.WhisperNet.Worker.csproj" />
 </Solution>

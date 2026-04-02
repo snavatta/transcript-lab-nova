@@ -17,8 +17,7 @@ public class QueueService : IQueueService
     {
         var projects = await _db.Projects
             .Include(p => p.Folder)
-            .Where(p => p.Status == ProjectStatus.Draft
-                     || p.Status == ProjectStatus.Queued
+            .Where(p => p.Status == ProjectStatus.Queued
                      || p.Status == ProjectStatus.PreparingMedia
                      || p.Status == ProjectStatus.Transcribing
                      || p.Status == ProjectStatus.Completed
@@ -34,9 +33,10 @@ public class QueueService : IQueueService
             Name = p.Name,
             OriginalFileName = p.OriginalFileName,
             Status = p.Status,
-            Progress = p.Progress,
+            Progress = p.Status is ProjectStatus.PreparingMedia or ProjectStatus.Transcribing ? null : p.Progress,
             MediaType = p.MediaType,
             DurationMs = p.DurationMs,
+            TranscriptionElapsedMs = p.TranscriptionElapsedMs,
             TotalSizeBytes = p.TotalSizeBytes,
             Engine = p.Settings.Engine,
             Model = p.Settings.Model,
@@ -46,7 +46,6 @@ public class QueueService : IQueueService
 
         return new QueueOverviewDto
         {
-            Drafts = projects.Where(p => p.Status == ProjectStatus.Draft).Select(MapToQueueItem).ToArray(),
             Queued = projects.Where(p => p.Status == ProjectStatus.Queued).Select(MapToQueueItem).ToArray(),
             Processing = projects.Where(p => p.Status is ProjectStatus.PreparingMedia or ProjectStatus.Transcribing).Select(MapToQueueItem).ToArray(),
             Completed = projects.Where(p => p.Status == ProjectStatus.Completed).Take(20).Select(MapToQueueItem).ToArray(),

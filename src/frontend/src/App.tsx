@@ -8,8 +8,10 @@ import DashboardPage from './pages/DashboardPage';
 import FoldersPage from './pages/FoldersPage';
 import FolderDetailPage from './pages/FolderDetailPage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
+import ProjectsPage from './pages/ProjectsPage';
 import QueuePage from './pages/QueuePage';
 import SettingsPage from './pages/SettingsPage';
+import DiagnosticsPage from './pages/DiagnosticsPage';
 
 function App() {
   return (
@@ -22,8 +24,10 @@ function App() {
               <Route path="/" component={DashboardPage} />
               <Route path="/folders" component={FoldersPage} />
               <Route path="/folders/:folderId" component={FolderDetailPage} />
+              <Route path="/projects" component={ProjectsPage} />
               <Route path="/projects/:projectId" component={ProjectDetailPage} />
               <Route path="/queue" component={QueuePage} />
+              <Route path="/diagnostics" component={DiagnosticsPage} />
               <Route path="/settings" component={SettingsPage} />
             </Switch>
           </AppShell>

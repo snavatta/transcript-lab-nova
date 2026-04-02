@@ -64,3 +64,4 @@
 ## Additional Libraries
 - **date-fns** - Date manipulation
 - **clsx** - Conditional className utilities
+- **react-window** - Virtualization for large option lists and other large scrollable collections

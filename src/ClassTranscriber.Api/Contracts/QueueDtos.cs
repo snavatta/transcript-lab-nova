@@ -15,6 +15,7 @@ public sealed record QueueItemDto
     [JsonConverter(typeof(JsonStringEnumConverter))]
     public required MediaType MediaType { get; init; }
     public long? DurationMs { get; init; }
+    public long? TranscriptionElapsedMs { get; init; }
     public long? TotalSizeBytes { get; init; }
     public required string Engine { get; init; }
     public required string Model { get; init; }
@@ -24,7 +25,6 @@ public sealed record QueueItemDto
 
 public sealed record QueueOverviewDto
 {
-    public required QueueItemDto[] Drafts { get; init; }
     public required QueueItemDto[] Queued { get; init; }
     public required QueueItemDto[] Processing { get; init; }
     public required QueueItemDto[] Completed { get; init; }

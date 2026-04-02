@@ -33,5 +33,9 @@ public enum TranscriptViewMode
 public enum TranscriptionEngine
 {
     Whisper,
-    SherpaOnnx
+    SherpaOnnx,
+    SherpaOnnxSenseVoice,
+    WhisperNet,
+    WhisperNetCuda,
+    WhisperNetOpenVino
 }

@@ -1,7 +1,7 @@
 import { useState, useCallback, useRef } from 'react';
 import {
   Box, Typography, Button, Table, TableBody, TableCell, TableContainer,
-  TableHead, TableRow, Paper, LinearProgress, IconButton, Skeleton,
+  TableHead, TableRow, Paper, IconButton, Skeleton,
   TextField, InputAdornment,
 } from '@mui/material';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
@@ -126,9 +126,9 @@ export default function FolderDetailPage() {
             <FolderAppearanceAvatar
               iconKey={folder?.iconKey}
               colorHex={folder?.colorHex}
-              size={36}
+              size={32}
             />
-            <Typography variant="h5" noWrap>
+            <Typography variant="h6" noWrap>
               {folder?.name ?? 'Folder'}
             </Typography>
           </Box>
@@ -226,6 +226,7 @@ export default function FolderDetailPage() {
                 <TableCell>Name</TableCell>
                 <TableCell>Status</TableCell>
                 <TableCell>Duration</TableCell>
+                <TableCell>Transcribed In</TableCell>
                 <TableCell>Size</TableCell>
                 <TableCell>Created</TableCell>
                 <TableCell width={48}></TableCell>
@@ -246,12 +247,10 @@ export default function FolderDetailPage() {
                   <TableCell>
                     <Box>
                       <ProjectStatusChip status={p.status} />
-                      {(p.status === 'PreparingMedia' || p.status === 'Transcribing') && p.progress != null && (
-                        <LinearProgress variant="determinate" value={p.progress} sx={{ mt: 0.5, width: 80 }} />
-                      )}
                     </Box>
                   </TableCell>
                   <TableCell>{formatDuration(p.durationMs)}</TableCell>
+                  <TableCell>{formatDuration(p.transcriptionElapsedMs)}</TableCell>
                   <TableCell>{formatBytes(p.totalSizeBytes)}</TableCell>
                   <TableCell>{formatDate(p.createdAtUtc)}</TableCell>
                   <TableCell>

@@ -1,7 +1,7 @@
 using ClassTranscriber.Api.Persistence;
+using ClassTranscriber.Api.Services;
 using ClassTranscriber.Api.Storage;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Net.Http.Headers;
 
 namespace ClassTranscriber.Api.Endpoints;
 
@@ -24,6 +24,22 @@ public static class MediaEndpoints
             return Results.File(fullPath, contentType, enableRangeProcessing: true);
         })
         .WithName("GetMedia")
+        .WithTags("Media");
+
+        app.MapGet("/api/projects/{id:guid}/audio", async (Guid id, AppDbContext db, IFileStorage fileStorage, CancellationToken ct) =>
+        {
+            var project = await db.Projects.FirstOrDefaultAsync(p => p.Id == id, ct);
+            if (project is null)
+                return Results.NotFound();
+
+            var audioPreviewRelativePath = ProjectAudioFileResolver.TryGetAudioPreviewRelativePath(fileStorage, project);
+            if (audioPreviewRelativePath is null)
+                return Results.NotFound();
+
+            var fullPath = fileStorage.GetFullPath(audioPreviewRelativePath);
+            return Results.File(fullPath, "audio/wav", enableRangeProcessing: true);
+        })
+        .WithName("GetProjectAudioPreview")
         .WithTags("Media");
     }
 

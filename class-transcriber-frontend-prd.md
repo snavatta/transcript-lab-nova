@@ -112,6 +112,9 @@ Includes:
 - audio normalization on/off
 - diarization on/off
 
+When language mode is `Fixed`, the UI should present a predefined language selector rather than a free-text code field.
+When an engine only supports a subset of fixed languages, the selector should be restricted to that engine-specific subset.
+
 ### Transcript view preferences
 Controls how transcript content is displayed in the UI.
 
@@ -130,14 +133,17 @@ Includes:
 - Folder Detail
 - Project Detail
 - Queue / Jobs
+- Diagnostics
 - Settings
 
 ## Suggested routes
 - `/` -> Dashboard
 - `/folders` -> All folders
+- `/projects` -> All projects
 - `/folders/:folderId` -> Folder detail
 - `/projects/:projectId` -> Project detail
 - `/queue` -> Queue / job monitoring
+- `/diagnostics` -> Runtime diagnostics
 - `/settings` -> Global defaults/settings
 
 ---
@@ -153,6 +159,7 @@ Contains:
 - Dashboard
 - Folders
 - Queue
+- Diagnostics
 - Settings
 
 Optional additional filters/shortcuts:
@@ -184,8 +191,8 @@ The user must be able to:
 - View all folders
 - Create a folder
 - Rename a folder
-- Choose a folder icon from the available MUI icon catalog during create/edit
-- Search folder icons by name during create/edit
+- Choose a folder icon from a small curated MUI icon set during create/edit
+- Search the available folder icons by name during create/edit
 - Choose and later change a folder color during create/edit
 - Delete a folder
 - Open a folder and see its projects
@@ -215,6 +222,19 @@ Each folder item should show:
 The user must be able to upload:
 - audio files
 - video files
+
+## 7.3 Diagnostics page
+
+The user must be able to open a diagnostics page that shows:
+- current backend runtime CPU consumption
+- current backend runtime memory consumption
+- transcription engine availability based on the current runtime environment
+- used disk space per project
+
+The diagnostics page should:
+- refresh automatically on an interval suitable for lightweight monitoring
+- clearly separate available and unavailable engines
+- show per-project storage in a table that includes at minimum project name, folder name, total size, and storage breakdown when available
 
 ### Upload entry points
 - Upload button inside a folder
@@ -309,6 +329,7 @@ Projects should support these statuses:
 - Status must be visible in folder lists, queue page, and project detail
 - Failed projects must show an error summary if available
 - Failed projects should expose a Retry action
+- Retry should allow the user to adjust engine/model/language settings before re-queueing, especially when the original engine is not available in the current runtime
 - Queued/transcribing projects should show progress if available
 
 ---
@@ -330,13 +351,14 @@ Show:
 - status
 - progress if available
 - file duration if known
+- transcription time if known
 - selected engine/model if available
 - created date/time
 - storage used if available
 
 ### Queue actions
 - Open project
-- Retry failed
+- Retry failed, with the ability to adjust transcription settings before re-queueing
 - Cancel queued job if backend supports it
 - Delete/cancelled cleanup later if backend supports it
 
@@ -354,7 +376,10 @@ Show:
 - upload/created date
 - media metadata if available
 - settings used for transcription
+- transcription timing metrics if available
 - storage usage summary
+
+If the backend provides diagnostic timing metrics, show them in a clearly secondary debug-style block rather than mixing them with the primary status/progress presentation.
 
 ### Main workspace layout
 Use a vertical stack for the MVP project workspace:
@@ -370,6 +395,10 @@ Transcript viewer
 ## 7.7 Media playback
 
 The project page must allow playback of the uploaded file.
+
+If the uploaded source is video and the backend provides a derived audio preview, the project page should allow switching between:
+- source video playback
+- extracted/prepared audio playback
 
 ### Media player requirements
 For audio and video:
@@ -502,6 +531,11 @@ The app must expose a global settings page for future uploads.
 - global defaults apply only to new uploads
 - changing settings does not retroactively modify existing projects
 - upload modal should start from global defaults but allow override per batch
+- batch and retry flows should allow diarization to be enabled or disabled per request
+- the settings page should also expose a model manager beside the defaults form
+- the model manager should show known engine/model combinations, local install state, install path, and the latest probe result
+- installed models should be probed on page load so runtime problems are visible without queueing an upload
+- the user should be able to `Download`, `Redownload`, and `Probe` from the settings page
 
 ---
 
@@ -655,6 +689,7 @@ Purpose:
 Should include:
 - breadcrumb
 - title
+- rename project action
 - status chip
 - metadata summary
 - storage usage summary
@@ -674,6 +709,7 @@ Purpose:
 
 Should include:
 - sections or tabs by status
+- an optional `All` tab that aggregates every queue section into one operational view
 - progress bars where possible
 - quick actions for retry/open
 - storage usage when available
@@ -780,6 +816,7 @@ The frontend should be designed assuming backend APIs will provide:
 - createdAt
 - updatedAt
 - duration
+- transcriptionElapsedMs when available for engine comparison
 - progress
 - settings summary
 - transcript summary if completed

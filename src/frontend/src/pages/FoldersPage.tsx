@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import {
   Box, Grid, Card, CardContent, Typography, Button,
-  IconButton, Menu, MenuItem, ListItemIcon, ListItemText, Skeleton, Paper, Chip, Stack,
+  IconButton, Menu, MenuItem, ListItemIcon, ListItemText, Skeleton, Chip, Stack,
 } from '@mui/material';
 import { alpha } from '@mui/material/styles';
 import AddIcon from '@mui/icons-material/Add';
@@ -10,7 +10,6 @@ import EditIcon from '@mui/icons-material/Edit';
 import DeleteIcon from '@mui/icons-material/Delete';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import FolderOpenIcon from '@mui/icons-material/FolderOpen';
-import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { useLocation } from 'wouter';
 import TopBar from '../components/shell/TopBar';
 import CreateFolderDialog from '../components/folders/CreateFolderDialog';
@@ -74,44 +73,6 @@ export default function FoldersPage() {
         }
       />
 
-      <Paper
-        variant="outlined"
-        sx={{
-          p: { xs: 2.5, md: 3 },
-          mb: 3,
-          borderRadius: 2,
-        }}
-      >
-        <Grid container spacing={2} alignItems="center">
-          <Grid size={{ xs: 12, md: 7 }}>
-            <Chip
-              icon={<AutoAwesomeIcon />}
-              label="Archive Index"
-              size="small"
-              variant="outlined"
-              sx={{
-                mb: 1.5,
-                borderColor: alpha('#3aa0c8', 0.28),
-                color: 'secondary.dark',
-                bgcolor: alpha('#3aa0c8', 0.05),
-              }}
-            />
-            <Typography variant="h5" sx={{ mb: 0.75 }}>
-              Folders
-            </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Create single-level spaces for each subject, then upload recordings into the right folder before they enter the queue.
-            </Typography>
-          </Grid>
-          <Grid size={{ xs: 12, md: 5 }}>
-            <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1.25} justifyContent={{ md: 'flex-end' }}>
-              <Chip label={`${folders?.length ?? 0} folders`} variant="outlined" />
-              <Chip label="Uploads start in-folder" variant="outlined" />
-            </Stack>
-          </Grid>
-        </Grid>
-      </Paper>
-
       {isLoading ? (
         <Grid container spacing={2}>
           {[1, 2, 3].map((i) => (
@@ -163,9 +124,6 @@ export default function FoldersPage() {
                       <MoreVertIcon fontSize="small" />
                     </IconButton>
                   </Box>
-                  <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
-                    {folder.projectCount} project{folder.projectCount !== 1 ? 's' : ''}
-                  </Typography>
                   <Stack direction="row" spacing={1} sx={{ mt: 1.5, flexWrap: 'wrap' }}>
                     <Chip
                       size="small"

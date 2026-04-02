@@ -17,13 +17,13 @@ public class SettingsService : ISettingsService
 
     public async Task<GlobalSettingsDto> GetAsync(CancellationToken ct = default)
     {
-        var settings = await _db.GlobalSettings.FirstAsync(ct);
+        var settings = await _db.GlobalSettings.SingleAsync(ct);
         return MapToDto(settings);
     }
 
     public async Task<GlobalSettingsDto> UpdateAsync(UpdateGlobalSettingsRequest request, CancellationToken ct = default)
     {
-        var settings = await _db.GlobalSettings.FirstAsync(ct);
+        var settings = await _db.GlobalSettings.SingleAsync(ct);
 
         settings.DefaultEngine = request.DefaultEngine;
         settings.DefaultModel = request.DefaultModel;
