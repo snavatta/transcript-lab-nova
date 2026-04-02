@@ -3,7 +3,6 @@
 Thumbs.db
 .idea/
 .vscode/*
-!.vscode/settings.json
 !.vscode/extensions.json
 !.vscode/launch.json
 !.vscode/tasks.json
@@ -47,3 +46,8 @@ test-results/
 *.gz
 *.sqlite
 *.db
+*.db-wal
+*.db-shm
+*.db-journal
+*.code-workspace
+/package-lock.json

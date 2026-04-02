@@ -1,0 +1,28 @@
+name: transcriptlab-nova
+
+services:
+  transcriptlab:
+    image: ghcr.io/snavatta/transcriptlab-nova-cpu:latest
+    container_name: transcriptlab
+    restart: unless-stopped
+    ports:
+      - "5000:5000"
+    environment:
+      ASPNETCORE_ENVIRONMENT: Production
+      Storage__BasePath: /data
+      ConnectionStrings__DefaultConnection: Data Source=/data/transcriptlab.db
+    volumes:
+      - /DATA/AppData/$$AppID/data:/data
+
+x-casaos:
+  architectures:
+    - amd64
+  main: transcriptlab
+  category: Media
+  index: /
+  port_map: "5000"
+  scheme: http
+  title:
+    en_us: TranscriptLab Nova
+  tagline:
+    en_us: Self-hosted transcription workspace for recorded classes and lectures

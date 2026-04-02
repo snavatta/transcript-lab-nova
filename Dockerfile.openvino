@@ -21,10 +21,16 @@ COPY src/ClassTranscriber.SherpaOnnx.Worker/ ClassTranscriber.SherpaOnnx.Worker/
 COPY src/ClassTranscriber.WhisperNet.Worker/ ClassTranscriber.WhisperNet.Worker/
 RUN dotnet publish ClassTranscriber.Api/ClassTranscriber.Api.csproj -c Release -o /app/publish
 
-# Stage 3: Runtime
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+# Stage 3: OpenVINO runtime
+FROM docker.io/openvino/ubuntu24_runtime:2025.3.0 AS runtime
 
-RUN apt-get update && apt-get install -y --no-install-recommends ffmpeg && rm -rf /var/lib/apt/lists/*
+USER root
+
+RUN apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        aspnetcore-runtime-10.0 \
+        ffmpeg \
+    && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 COPY --from=backend-build /app/publish ./
@@ -33,6 +39,7 @@ COPY --from=frontend-build /app/frontend/dist ./wwwroot/
 ENV ASPNETCORE_URLS=http://+:5000
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV Storage__BasePath=/data
+ENV LD_LIBRARY_PATH=/opt/intel/openvino/runtime/lib/intel64:/opt/intel/openvino/runtime/3rdparty/tbb/lib:${LD_LIBRARY_PATH}
 
 EXPOSE 5000
 VOLUME /data

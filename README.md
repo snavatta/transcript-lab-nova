@@ -84,7 +84,132 @@ dotnet run
 ```
 
 The API runs at `http://localhost:5000`. Swagger UI is available at `/swagger` in development.
+In local development, SQLite and all runtime artifacts are stored under the repo-root `data/` directory rather than under `src/ClassTranscriber.Api/`.
 When a Whisper model is selected for the first time, the backend can download the missing `ggml-*.bin` file into the configured `models/` directory automatically.
+The default upload request limit is 1 GiB. Override it with `Uploads__MaxRequestBodySizeBytes` if you need a different ceiling.
+
+### Data Storage
+
+Runtime data is split by environment:
+
+- Local development:
+  - SQLite database: `./data/transcriptlab.db`
+  - uploads, extracted audio, transcripts, exports, temp files, and downloaded models: `./data/`
+- Docker / container runtime:
+  - SQLite database: `/data/transcriptlab.db`
+  - uploads, extracted audio, transcripts, exports, temp files, and downloaded models: `/data/`
+
+The app intentionally keeps the database and filesystem artifacts under the same configurable base path so a single Docker volume captures the whole workspace.
+
+### Transcription Engines
+
+The backend supports multiple transcription engines. Use `GET /api/settings/options` to query the currently available engines and their models at runtime.
+
+#### Whisper (default)
+
+Uses `whisper-cli` (whisper.cpp). Models are auto-downloaded on first use. No extra setup needed beyond having `whisper-cli` on `$PATH`.
+
+#### SherpaOnnx
+
+Uses the official SherpaOnnx .NET runtime through an isolated helper worker process.
+
+**Model download:**
+
+```bash
+# Download all registered models (small + medium)
+./scripts/download-sherpa-models.sh all
+
+# Or download a single model
+./scripts/download-sherpa-models.sh small
+```
+
+Models are placed under the configured path (default `/data/models/sherpa-onnx/<model>/`). When auto-download is enabled, the backend can also fetch a missing registered model on first use.
+
+**Model directory layout:**
+
+Each model directory must contain a `config.json` describing the model backend and file names. Two layouts are supported:
+
+Whisper backend (encoder/decoder pair):
+```
+/data/models/sherpa-onnx/small/
+├── config.json
+├── tiny-encoder.onnx
+├── tiny-decoder.onnx
+└── tiny-tokens.txt
+```
+
+SenseVoice backend (single model):
+```
+/data/models/sherpa-onnx/<model>/
+├── config.json
+├── model.onnx
+└── tokens.txt
+```
+
+The `config.json` selects the backend and maps file names. Example for the whisper backend:
+```json
+{
+  "backend": "whisper",
+  "encoder": "tiny-encoder.onnx",
+  "decoder": "tiny-decoder.onnx",
+  "tokens": "tiny-tokens.txt",
+  "task": "transcribe"
+}
+```
+
+Configuration in `appsettings.json`:
+```json
+{
+  "Transcription": {
+    "SherpaOnnx": {
+      "ModelsPath": "/data/models/sherpa-onnx",
+      "Provider": "cpu",
+      "NumThreads": 4,
+      "AutoDownloadModels": true,
+      "ModelDownloadBaseUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
+    }
+  }
+}
+```
+
+#### WhisperNet (CPU)
+
+Uses the [Whisper.net](https://github.com/sandrohanea/whisper.net) managed library with the `Whisper.net.Runtime` (CPU) native backend through an isolated helper worker process. Models are the same ggml files used by the Whisper CLI engine and are auto-downloaded on first use.
+
+No extra setup needed. The NuGet packages are included in the project.
+
+#### WhisperNetCuda (NVIDIA GPU)
+
+Uses the [Whisper.net](https://github.com/sandrohanea/whisper.net) managed library with the stable `Whisper.net.Runtime.Cuda` native backend through the same isolated helper worker process.
+
+**Prerequisites:**
+
+- NVIDIA GPU with CUDA support
+- CUDA runtime/driver libraries visible to the app
+- For Docker: NVIDIA Container Toolkit and GPU device exposure to the container
+
+Models are the same ggml files used by the Whisper CLI engine and are auto-downloaded on first use. The backend probes for CUDA runtime libraries before each job and returns a clear failure if the host/container cannot load them.
+
+#### WhisperNetOpenVino (Intel GPU)
+
+Uses the [Whisper.net](https://github.com/sandrohanea/whisper.net) managed library with the `Whisper.net.Runtime.OpenVino` native backend for Intel GPU acceleration. Ideal for the homelab target (Intel Arc A310).
+
+**Prerequisites:**
+
+- [OpenVino Toolkit (>= 2024.4)](https://github.com/openvinotoolkit/openvino)
+
+Models are the same ggml files used by the Whisper CLI engine and are auto-downloaded on first use. The backend probes for the OpenVino runtime before each job and returns a clear failure if the host cannot load the required libraries.
+
+Configuration for all WhisperNet engines in `appsettings.json`:
+```json
+{
+  "Transcription": {
+    "WhisperNet": {
+      "AutoDownloadModels": true
+    }
+  }
+}
+```
 
 ### Frontend
 
@@ -116,4 +241,109 @@ cd src/frontend && npm test
 docker compose up --build
 ```
 
-The application runs at `http://localhost:5000` with data persisted in a Docker volume.
+The default image uses `Dockerfile` and is intended for CPU-only runs. The application runs at `http://localhost:5000` with data persisted in a Docker volume.
+Large uploads use the same 1 GiB default ceiling in Docker through `appsettings.json`. Override it with `Uploads__MaxRequestBodySizeBytes` in Compose if needed.
+
+To try NVIDIA CUDA inside Docker, use the optional override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.cuda.yml up --build
+```
+
+The override switches the build to `Dockerfile.cuda`, which uses an NVIDIA CUDA runtime base image and installs `aspnetcore-runtime-10.0` inside it. This requires the NVIDIA Container Toolkit on the host so the container can access the GPU and driver libraries.
+
+To try Intel OpenVINO inside Docker, use the optional override:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.openvino.yml up --build
+```
+
+The OpenVINO override switches the build to `Dockerfile.openvino`, exposes `/dev/dri`, and sets `Transcription__WhisperNet__OpenVinoDevice=GPU`.
+
+### CasaOS
+
+For CasaOS custom installs, use `docker-compose.casaos.yml`. It is image-based rather than build-based and defaults to the published CPU package:
+
+```bash
+ghcr.io/snavatta/transcriptlab-nova-cpu:latest
+```
+
+The CasaOS file stores all runtime data under:
+
+```bash
+/DATA/AppData/$AppID/data
+```
+
+If you want a GPU-backed CasaOS install, change the image in that file to one of:
+
+- `ghcr.io/snavatta/transcriptlab-nova-cuda:latest`
+- `ghcr.io/snavatta/transcriptlab-nova-openvino:latest`
+
+For OpenVINO on CasaOS, also add:
+
+```yaml
+devices:
+  - /dev/dri:/dev/dri
+environment:
+  Transcription__WhisperNet__OpenVinoDevice: GPU
+```
+
+For CUDA on CasaOS, the host still needs NVIDIA Container Toolkit and GPU runtime support.
+
+### Public Container Images
+
+The repository is set up to publish three public GHCR images from GitHub Actions:
+
+- `ghcr.io/<owner>/transcriptlab-nova-cpu`
+- `ghcr.io/<owner>/transcriptlab-nova-cuda`
+- `ghcr.io/<owner>/transcriptlab-nova-openvino`
+
+Each package is published for `linux/amd64` and receives:
+
+- `latest`
+- the pushed semver tag such as `v1.2.3`
+- an immutable `sha-...` tag
+
+Example pulls:
+
+```bash
+docker pull ghcr.io/<owner>/transcriptlab-nova-cpu:latest
+docker pull ghcr.io/<owner>/transcriptlab-nova-cuda:latest
+docker pull ghcr.io/<owner>/transcriptlab-nova-openvino:latest
+```
+
+Example runs:
+
+```bash
+# CPU
+docker run --rm -p 5000:5000 -v transcriptlab-data:/data \
+  ghcr.io/<owner>/transcriptlab-nova-cpu:latest
+
+# CUDA
+docker run --rm -p 5000:5000 -v transcriptlab-data:/data \
+  --gpus all \
+  -e NVIDIA_VISIBLE_DEVICES=all \
+  -e NVIDIA_DRIVER_CAPABILITIES=compute,utility \
+  ghcr.io/<owner>/transcriptlab-nova-cuda:latest
+
+# OpenVINO
+docker run --rm -p 5000:5000 -v transcriptlab-data:/data \
+  --device /dev/dri:/dev/dri \
+  -e Transcription__WhisperNet__OpenVinoDevice=GPU \
+  ghcr.io/<owner>/transcriptlab-nova-openvino:latest
+```
+
+If your GitHub Packages defaults keep newly published container packages private, set the package visibility to `Public` after the first publish.
+
+Host prerequisites:
+
+- CPU image:
+  - no GPU runtime required
+- CUDA image:
+  - NVIDIA GPU
+  - NVIDIA Container Toolkit
+  - driver/runtime libraries available to the container
+- OpenVINO image:
+  - Intel GPU or supported Intel accelerator
+  - `/dev/dri` device exposure into the container
+  - host graphics stack/driver support compatible with OpenVINO GPU execution

@@ -12,7 +12,9 @@
       "stopAtEntry": false,
       "env": {
         "ASPNETCORE_ENVIRONMENT": "Development",
-        "ASPNETCORE_URLS": "http://localhost:5000"
+        "ASPNETCORE_URLS": "http://localhost:5000",
+        "Storage__BasePath": "${workspaceFolder}/data",
+        "ConnectionStrings__DefaultConnection": "Data Source=${workspaceFolder}/data/transcriptlab.db"
       },
       "console": "integratedTerminal"
     },

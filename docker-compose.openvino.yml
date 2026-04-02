@@ -1,0 +1,8 @@
+services:
+  transcriptlab:
+    build:
+      dockerfile: Dockerfile.openvino
+    devices:
+      - /dev/dri:/dev/dri
+    environment:
+      - Transcription__WhisperNet__OpenVinoDevice=GPU

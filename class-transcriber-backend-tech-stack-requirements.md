@@ -8,6 +8,7 @@
 - **Implicit usings** - Allowed for standard SDK ergonomics
 - **Docker** - Required deployment target for local and homelab environments
 - **Linux-first runtime support** - Backend must run correctly in Linux containers
+- Public container distribution may publish separate CPU, CUDA, and OpenVino image variants when they remain behaviorally equivalent aside from runtime acceleration dependencies
 
 ## Homelab Hardware Assumptions
 - Target host baseline: **Intel i3-12100KF**, **16 GB RAM**, **Intel Arc A310 4 GB**
@@ -54,9 +55,11 @@
 ## Transcription Integration
 - **Pluggable transcription engine abstraction** - Required integration boundary
 - **Whisper-based implementation** - Required MVP engine family
-- Local runtime helpers such as **whisper.cpp CLI** and **SherpaOnnx via a local Python adapter/runtime** are allowed when kept behind the transcription engine abstraction
+- Local runtime helpers such as **whisper.cpp CLI** are allowed when kept behind the transcription engine abstraction
+- **SherpaOnnx** via the official local **.NET runtime/package** is approved behind the engine abstraction; running it through an isolated helper worker process is allowed when needed for cancellation or runtime isolation
+- **Whisper.net** managed library with **Whisper.net.Runtime** (CPU), **Whisper.net.Runtime.Cuda** (NVIDIA GPU), and **Whisper.net.Runtime.OpenVino** (Intel GPU) runtimes are approved behind the engine abstraction, but CPU, CUDA, and OpenVino execution must run through isolated helper worker processes because Whisper.net runtime loading is process-global
 - Keep engine-specific logic behind a dedicated transcription service and engine interface
-- Accept diarization settings now even if the MVP engine returns no speaker labels
+- Speaker diarization may be implemented as a lightweight local post-processing step over prepared audio and transcript timestamps rather than a separate heavyweight external service
 
 ## Logging and Observability
 - **Microsoft.Extensions.Logging** - Baseline logging abstraction
@@ -67,8 +70,9 @@
 ## Configuration
 - **appsettings.json + environment-specific overrides + environment variables** - Standard configuration sources
 - Use typed options for storage paths, database connection, FFmpeg location, and transcription settings
-- Expose typed options for worker concurrency and optional GPU/transcription runtime settings
+- Expose typed options for worker concurrency, Sherpa runtime settings, Whisper.net worker path/host settings, and optional GPU/transcription runtime settings
 - Secrets should come from environment variables or deployment configuration, not committed files
+- Local development defaults should keep runtime data outside tracked source directories
 
 ## HTTP and Contract Rules
 - Use the shared contract in `class-transcriber-shared-api-contract.md` as the source of truth for DTOs and route behavior
