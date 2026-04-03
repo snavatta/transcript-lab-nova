@@ -53,6 +53,11 @@ interface MockState {
 }
 
 const NOW = '2026-04-02T12:00:00Z';
+const MOBILE_VIEWPORTS = [
+  { label: 'iphone-15', width: 393, height: 852 },
+  { label: 'large-iphone', width: 430, height: 932 },
+  { label: 'compact-android', width: 360, height: 800 },
+];
 
 function json(route: Route, body: unknown, status = 200) {
   return route.fulfill({
@@ -62,8 +67,8 @@ function json(route: Route, body: unknown, status = 200) {
   });
 }
 
-function createMockState(): MockState {
-  return {
+function createMockState(seedCompletedProject = false): MockState {
+  const state: MockState = {
     folders: [],
     projects: [],
     settings: {
@@ -76,6 +81,50 @@ function createMockState(): MockState {
       defaultTranscriptViewMode: 'Timestamped',
     },
   };
+
+  if (seedCompletedProject) {
+    const folder: FolderState = {
+      id: 'folder-1',
+      name: 'Biology',
+      iconKey: 'Science',
+      colorHex: '#2E7D32',
+      createdAtUtc: NOW,
+      updatedAtUtc: NOW,
+    };
+    const project: ProjectState = {
+      id: 'project-1',
+      folderId: folder.id,
+      name: 'Biology Lecture 01',
+      originalFileName: 'lecture01.mp3',
+      status: 'Queued',
+      progress: 100,
+      mediaType: 'Audio',
+      durationMs: 3_600_000,
+      transcriptionElapsedMs: 522_000,
+      totalSizeBytes: 412_345_678,
+      createdAtUtc: NOW,
+      updatedAtUtc: NOW,
+      settings: {
+        engine: state.settings.defaultEngine,
+        model: state.settings.defaultModel,
+        languageMode: state.settings.defaultLanguageMode,
+        languageCode: state.settings.defaultLanguageCode,
+        audioNormalizationEnabled: state.settings.defaultAudioNormalizationEnabled,
+        diarizationEnabled: state.settings.defaultDiarizationEnabled,
+      },
+      transcriptAvailable: true,
+      availableExports: ['txt', 'md', 'html', 'pdf'],
+      originalFileSizeBytes: 385_000_000,
+      workspaceSizeBytes: 27_345_678,
+      detailRequests: 2,
+    };
+
+    completeProject(project);
+    state.folders.push(folder);
+    state.projects.push(project);
+  }
+
+  return state;
 }
 
 function getFolderProjectCount(state: MockState, folderId: string) {
@@ -151,8 +200,8 @@ function completeProject(project: ProjectState) {
   project.workspaceSizeBytes = 27_345_678;
 }
 
-async function installMockApi(page: Page) {
-  const state = createMockState();
+async function installMockApi(page: Page, options?: { seedCompletedProject?: boolean }) {
+  const state = createMockState(options?.seedCompletedProject);
 
   await page.route('http://127.0.0.1:4173/api/**', async (route) => {
     const url = new URL(route.request().url());
@@ -167,6 +216,89 @@ async function installMockApi(page: Page) {
       const body = route.request().postDataJSON() as MockState['settings'];
       state.settings = body;
       return json(route, state.settings);
+    }
+
+    if (pathname === '/api/settings/options' && method === 'GET') {
+      return json(route, {
+        engines: [
+          { engine: 'WhisperNet', models: ['tiny', 'base', 'small'] },
+          { engine: 'WhisperNetCuda', models: ['small'] },
+          { engine: 'OpenVinoGenAi', models: ['base-int8', 'small-fp16', 'tiny-int8'] },
+        ],
+      });
+    }
+
+    if (pathname === '/api/settings/models' && method === 'GET') {
+      return json(route, {
+        models: [
+          {
+            engine: 'WhisperNet',
+            model: 'small',
+            isInstalled: true,
+            installPath: '/models/whispernet/small.bin',
+            canDownload: true,
+            canRedownload: true,
+            canProbe: true,
+            probeState: 'Ready',
+            probeMessage: 'Model is ready.',
+          },
+          {
+            engine: 'WhisperNetCuda',
+            model: 'small',
+            isInstalled: false,
+            installPath: null,
+            canDownload: true,
+            canRedownload: false,
+            canProbe: false,
+            probeState: 'Missing',
+            probeMessage: 'Install the runtime to enable probes.',
+          },
+        ],
+      });
+    }
+
+    if (pathname === '/api/settings/models/manage' && method === 'POST') {
+      return json(route, { ok: true });
+    }
+
+    if (pathname === '/api/diagnostics' && method === 'GET') {
+      return json(route, {
+        runtime: {
+          collectedAtUtc: NOW,
+          processId: 4242,
+          processorCount: 16,
+          uptimeMs: 3_600_000,
+          cpuUsagePercent: 12.4,
+          workingSetBytes: 512_000_000,
+          privateMemoryBytes: 389_000_000,
+          managedHeapBytes: 112_000_000,
+        },
+        engines: [
+          {
+            engine: 'WhisperNet',
+            isAvailable: true,
+            models: ['small'],
+            availabilityError: null,
+          },
+          {
+            engine: 'WhisperNetCuda',
+            isAvailable: false,
+            models: ['small'],
+            availabilityError: 'CUDA runtime libraries were not detected.',
+          },
+        ],
+        projects: state.projects.map((project) => ({
+          projectId: project.id,
+          folderId: project.folderId,
+          folderName: state.folders.find((folder) => folder.id === project.folderId)?.name ?? 'Unknown',
+          projectName: project.name,
+          status: project.status,
+          originalFileSizeBytes: project.originalFileSizeBytes,
+          workspaceSizeBytes: project.workspaceSizeBytes,
+          totalSizeBytes: project.totalSizeBytes,
+          updatedAtUtc: project.updatedAtUtc,
+        })),
+      });
     }
 
     if (pathname === '/api/folders' && method === 'GET') {
@@ -393,6 +525,17 @@ async function installMockApi(page: Page) {
   });
 }
 
+async function assertNoHorizontalOverflow(page: Page) {
+  const dimensions = await page.evaluate(() => ({
+    root: document.documentElement.scrollWidth,
+    body: document.body.scrollWidth,
+    viewport: window.innerWidth,
+  }));
+
+  expect(dimensions.root).toBeLessThanOrEqual(dimensions.viewport + 1);
+  expect(dimensions.body).toBeLessThanOrEqual(dimensions.viewport + 1);
+}
+
 test('supports folder creation, upload review, queue monitoring, project polling, and export availability', async ({ page }) => {
   await installMockApi(page);
 
@@ -431,10 +574,10 @@ test('supports folder creation, upload review, queue monitoring, project polling
     },
   ]);
 
-  await expect(page.getByRole('heading', { name: 'Upload Files' })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Review Batch Upload' })).toBeVisible();
   await expect(page.getByRole('combobox').nth(0)).toHaveText('WhisperNet.CPU');
   await expect(page.getByRole('combobox').nth(1)).toHaveText('small');
-  await page.getByRole('button', { name: 'Upload & Queue' }).click();
+  await page.getByRole('button', { name: 'Create and Queue' }).click();
 
   await expect(page.getByText('Biology Lecture 01')).toBeVisible();
 
@@ -456,3 +599,49 @@ test('supports folder creation, upload review, queue monitoring, project polling
   await expect(page.getByRole('menuitem', { name: 'HTML (.html)' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'PDF (.pdf)' })).toBeVisible();
 });
+
+for (const viewport of MOBILE_VIEWPORTS) {
+  test(`renders mobile layouts without horizontal overflow on ${viewport.label}`, async ({ page }) => {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height });
+    await installMockApi(page, { seedCompletedProject: true });
+
+    await page.goto('/');
+    await expect(page.locator('header').getByRole('button', { name: 'Open navigation' })).toBeVisible();
+    await assertNoHorizontalOverflow(page);
+
+    await page.locator('header').getByRole('button', { name: 'Open navigation' }).click();
+    await page.getByRole('button', { name: 'Diagnostics' }).click();
+    await expect(page).toHaveURL(/\/diagnostics$/);
+    await assertNoHorizontalOverflow(page);
+
+    await page.locator('header').getByRole('button', { name: 'Open navigation' }).click();
+    await page.getByRole('button', { name: 'Settings' }).click();
+    await expect(page).toHaveURL(/\/settings$/);
+    await expect(page.getByText('Model Manager')).toBeVisible();
+    await assertNoHorizontalOverflow(page);
+
+    await page.goto('/folders/folder-1');
+    await expect(page.getByText('Biology Lecture 01')).toBeVisible();
+    await assertNoHorizontalOverflow(page);
+    await page.locator('input[type="file"]').setInputFiles([
+      {
+        name: 'lecture02.mp3',
+        mimeType: 'audio/mpeg',
+        buffer: Buffer.from('mock-audio'),
+      },
+    ]);
+    await expect(page.getByRole('button', { name: 'Create and Queue' })).toBeVisible();
+    await page.getByRole('button', { name: 'Cancel' }).click();
+
+    await page.goto('/queue');
+    await expect(page.getByText('WhisperNet.CPU / small')).toBeVisible();
+    await assertNoHorizontalOverflow(page);
+
+    await page.goto('/projects/project-1');
+    await expect(page.getByRole('button', { name: 'Readable' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Timestamped' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Play' })).toBeVisible();
+    await expect(page.getByRole('button', { name: 'Export' })).toBeVisible();
+    await assertNoHorizontalOverflow(page);
+  });
+}

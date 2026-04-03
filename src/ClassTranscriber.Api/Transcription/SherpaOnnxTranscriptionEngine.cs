@@ -13,6 +13,7 @@ public abstract class SherpaOnnxEngineOptionsBase
     public string Provider { get; set; } = "cpu";
     public int NumThreads { get; set; } = 4;
     public bool AutoDownloadModels { get; set; } = true;
+    public bool LogSegments { get; set; }
     public string ModelDownloadBaseUrl { get; set; } = "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models";
     public string WorkerPath { get; set; } = "ClassTranscriber.SherpaOnnx.Worker.dll";
     public string DotNetHostPath { get; set; } = "dotnet";
@@ -309,6 +310,7 @@ public abstract class SherpaOnnxTranscriptionEngineBase<TOptions> : IRegisteredT
             NumThreads = _options.NumThreads,
             LanguageMode = settings.LanguageMode,
             LanguageCode = settings.LanguageCode,
+            LogSegments = _options.LogSegments,
         };
 
         _logger.LogInformation(

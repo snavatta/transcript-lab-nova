@@ -26,6 +26,7 @@ import { useSWRConfig } from 'swr';
 import { formatDate, formatDuration } from '../utils/format';
 import { formatEngineLabel } from '../utils/transcription';
 import { getLanguageLabel } from '../utils/languages';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 function formatDebugDuration(ms: number | null | undefined): string {
   if (ms == null) return '—';
@@ -39,6 +40,7 @@ function formatRealtimeFactor(value: number | null | undefined): string {
 }
 
 export default function ProjectDetailPage() {
+  const isMobile = useIsMobile();
   const [, params] = useRoute('/projects/:projectId');
   const projectId = params?.projectId ?? '';
   const { data: project, isLoading } = useProject(projectId);
@@ -158,8 +160,8 @@ export default function ProjectDetailPage() {
       />
 
       {/* Metadata bar */}
-      <Paper variant="outlined" sx={{ p: 2, mb: 2 }}>
-        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 2, alignItems: 'center' }}>
+      <Paper variant="outlined" sx={{ p: { xs: 2, md: 2.5 }, mb: 2 }}>
+        <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1.25, alignItems: 'center' }}>
           <ProjectStatusChip status={project.status} size="medium" />
           {project.durationMs != null && (
             <Chip label={`Duration: ${formatDuration(project.durationMs)}`} size="small" variant="outlined" />
@@ -172,12 +174,12 @@ export default function ProjectDetailPage() {
           {project.settings.languageMode === 'Fixed' && project.settings.languageCode && (
             <Chip label={`Lang: ${getLanguageLabel(project.settings.languageCode)}`} size="small" variant="outlined" />
           )}
-          <Box sx={{ flexGrow: 1 }} />
+          <Box sx={{ flexGrow: 1, display: { xs: 'none', sm: 'block' } }} />
           <StorageUsageSummary
             originalFileSizeBytes={project.originalFileSizeBytes}
             workspaceSizeBytes={project.workspaceSizeBytes}
             totalSizeBytes={project.totalSizeBytes}
-            compact
+            compact={!isMobile}
           />
         </Box>
         {project.errorMessage && (
@@ -218,13 +220,19 @@ export default function ProjectDetailPage() {
       <Stack spacing={2}>
         <Box>
           {canPreviewExtractedAudio && (
-            <Box sx={{ display: 'flex', justifyContent: 'flex-end', mb: 1 }}>
+            <Box sx={{ display: 'flex', justifyContent: { xs: 'stretch', sm: 'flex-end' }, mb: 1 }}>
               <ToggleButtonGroup
                 exclusive
                 size="small"
                 value={previewMode}
                 onChange={(_, value: 'source' | 'audio' | null) => {
                   if (value) setPreviewMode(value);
+                }}
+                sx={{
+                  width: { xs: '100%', sm: 'auto' },
+                  '& .MuiToggleButton-root': {
+                    flex: { xs: 1, sm: '0 0 auto' },
+                  },
                 }}
               >
                 <ToggleButton value="source">

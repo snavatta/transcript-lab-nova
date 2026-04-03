@@ -3,6 +3,8 @@ import {
   Box, Typography, Button, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, IconButton, Skeleton,
   TextField, InputAdornment,
+  Chip,
+  Stack,
 } from '@mui/material';
 import UploadFileIcon from '@mui/icons-material/UploadFile';
 import SearchIcon from '@mui/icons-material/Search';
@@ -20,8 +22,10 @@ import { useSWRConfig } from 'swr';
 import { ACCEPTED_EXTENSIONS, formatBytes, formatDuration, formatDate, isAcceptedFile } from '../utils/format';
 import type { ProjectSummaryDto } from '../types';
 import FolderAppearanceAvatar from '../components/folders/FolderAppearanceAvatar';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 export default function FolderDetailPage() {
+  const isMobile = useIsMobile();
   const [, params] = useRoute('/folders/:folderId');
   const folderId = params?.folderId ?? '';
   const { data: folder, isLoading: folderLoading } = useFolder(folderId);
@@ -174,11 +178,13 @@ export default function FolderDetailPage() {
           <Paper
             variant="outlined"
             sx={{
-              px: 4,
-              py: 3,
+              px: { xs: 2.5, sm: 4 },
+              py: { xs: 2.5, sm: 3 },
               textAlign: 'center',
               bgcolor: 'background.paper',
               boxShadow: 3,
+              maxWidth: 420,
+              mx: 2,
             }}
           >
             <UploadFileIcon color="primary" sx={{ fontSize: 36, mb: 1 }} />
@@ -192,7 +198,7 @@ export default function FolderDetailPage() {
         </Box>
       )}
 
-      <Box sx={{ mt: 3, mb: 2, display: 'flex', alignItems: 'center', gap: 2 }}>
+      <Box sx={{ mt: 3, mb: 2, display: 'flex', alignItems: 'center', gap: 2, flexWrap: 'wrap' }}>
         <TextField
           size="small"
           placeholder="Search projects..."
@@ -207,10 +213,10 @@ export default function FolderDetailPage() {
               ),
             },
           }}
-          sx={{ minWidth: 250 }}
+          sx={{ width: { xs: '100%', sm: 'auto' }, minWidth: { sm: 250 } }}
         />
         {folder && (
-          <Typography variant="body2" color="text.secondary">
+          <Typography variant="body2" color="text.secondary" sx={{ width: { xs: '100%', sm: 'auto' } }}>
             {folder.projectCount} project{folder.projectCount !== 1 ? 's' : ''} &bull; {formatBytes(folder.totalSizeBytes)}
           </Typography>
         )}
@@ -218,6 +224,51 @@ export default function FolderDetailPage() {
 
       {isLoading ? (
         <Skeleton variant="rounded" height={200} />
+      ) : projects && projects.length > 0 && isMobile ? (
+        <Stack spacing={1.5}>
+          {projects.map((project) => (
+            <Paper
+              key={project.id}
+              variant="outlined"
+              sx={{ p: 2, cursor: 'pointer' }}
+              onClick={() => navigate(`/projects/${project.id}`)}
+            >
+              <Stack spacing={1.25}>
+                <Box sx={{ display: 'flex', gap: 1, alignItems: 'flex-start' }}>
+                  <Box sx={{ flexGrow: 1, minWidth: 0 }}>
+                    <Typography variant="subtitle2" noWrap>
+                      {project.name}
+                    </Typography>
+                    <Typography variant="caption" color="text.secondary">
+                      {project.originalFileName}
+                    </Typography>
+                  </Box>
+                  <IconButton
+                    size="small"
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setDeleteTarget(project);
+                    }}
+                    aria-label="Delete project"
+                  >
+                    <DeleteIcon fontSize="small" />
+                  </IconButton>
+                </Box>
+
+                <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                  <ProjectStatusChip status={project.status} />
+                  <Chip size="small" label={`Duration: ${formatDuration(project.durationMs)}`} variant="outlined" />
+                  <Chip size="small" label={`Transcribed: ${formatDuration(project.transcriptionElapsedMs)}`} variant="outlined" />
+                  <Chip size="small" label={`Size: ${formatBytes(project.totalSizeBytes)}`} variant="outlined" />
+                </Stack>
+
+                <Typography variant="caption" color="text.secondary">
+                  Created {formatDate(project.createdAtUtc)}
+                </Typography>
+              </Stack>
+            </Paper>
+          ))}
+        </Stack>
       ) : projects && projects.length > 0 ? (
         <TableContainer component={Paper} variant="outlined">
           <Table size="small">

@@ -42,6 +42,7 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
                 new NoOpTranscriptionEngine("WhisperNet", ["tiny", "base", "small", "medium", "large"]),
                 new NoOpTranscriptionEngine("WhisperNetCuda", ["tiny", "base", "small", "medium", "large"]),
                 new NoOpTranscriptionEngine("WhisperNetOpenVino", ["tiny", "base", "small", "medium", "large"]),
+                new NoOpTranscriptionEngine("OpenVinoGenAi", ["base-int8", "small-fp16", "tiny-int8"]),
             ];
         var resolvedMaxRequestBodySizeBytes = maxRequestBodySizeBytes is > 0
             ? maxRequestBodySizeBytes.Value
@@ -73,6 +74,10 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
             client.Timeout = Timeout.InfiniteTimeSpan;
         });
         builder.Services.AddHttpClient("SherpaOnnxModelDownloads", client =>
+        {
+            client.Timeout = Timeout.InfiniteTimeSpan;
+        });
+        builder.Services.AddHttpClient("OpenVinoGenAiModelDownloads", client =>
         {
             client.Timeout = Timeout.InfiniteTimeSpan;
         });
@@ -109,6 +114,10 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
         builder.Services.Configure<SherpaOnnxSenseVoiceOptions>(o =>
         {
             o.ModelsPath = Path.Combine(_storageBasePath, "models", "sherpa-onnx-sense-voice");
+        });
+        builder.Services.Configure<OpenVinoGenAiOptions>(o =>
+        {
+            o.ModelsPath = Path.Combine(_storageBasePath, "models", "openvino-genai");
         });
 
         builder.Services.AddSingleton<IMediaInspector, NoOpMediaInspector>();

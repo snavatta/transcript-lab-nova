@@ -8,6 +8,8 @@ export function formatEngineLabel(engine: string): string {
       return 'WhisperNet.CUDA';
     case 'WhisperNetOpenVino':
       return 'WhisperNet.OpenVINO';
+    case 'OpenVinoGenAi':
+      return 'OpenVINO.GenAI';
     default:
       return engine;
   }

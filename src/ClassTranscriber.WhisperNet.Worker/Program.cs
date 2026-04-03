@@ -83,13 +83,20 @@ internal static class WhisperNetWorkerProcessor
         {
             if (!string.IsNullOrWhiteSpace(result.Text))
             {
-                segments.Add(new TranscriptSegmentDto
+                var segment = new TranscriptSegmentDto
                 {
                     StartMs = (long)result.Start.TotalMilliseconds,
                     EndMs = (long)result.End.TotalMilliseconds,
                     Text = result.Text.Trim(),
                     Speaker = null,
-                });
+                };
+                segments.Add(segment);
+
+                if (request.LogSegments)
+                {
+                    await Console.Error.WriteLineAsync(
+                        $"Whisper.net segment {segments.Count}: startMs={segment.StartMs}, endMs={segment.EndMs}, text={FormatSegmentText(segment.Text)}");
+                }
             }
 
             if (detectedLanguage is null && !string.IsNullOrWhiteSpace(result.Language))
@@ -107,6 +114,9 @@ internal static class WhisperNetWorkerProcessor
             DurationMs = durationMs,
         };
     }
+
+    private static string FormatSegmentText(string text)
+        => text.Replace('\r', ' ').Replace('\n', ' ').Trim();
 }
 
 internal static class WhisperRuntimeConfigurator
@@ -313,6 +323,7 @@ internal sealed record WhisperNetWorkerRequest
     public string? LanguageCode { get; init; }
     public required string ModelsPath { get; init; }
     public required bool AutoDownloadModels { get; init; }
+    public required bool LogSegments { get; init; }
     public required string OpenVinoDevice { get; init; }
     public string? OpenVinoCachePath { get; init; }
 }

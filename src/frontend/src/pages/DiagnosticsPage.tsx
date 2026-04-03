@@ -4,6 +4,7 @@ import {
   Box,
   Chip,
   Paper,
+  Stack,
   Skeleton,
   Table,
   TableBody,
@@ -21,6 +22,7 @@ import TopBar from '../components/shell/TopBar';
 import { useDiagnostics } from '../hooks/useData';
 import { formatBytes, formatDate, formatDuration } from '../utils/format';
 import { formatEngineLabel } from '../utils/transcription';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 function formatPercent(value: number): string {
   return `${value.toFixed(1)}%`;
@@ -56,6 +58,7 @@ function MetricCard({
 }
 
 export default function DiagnosticsPage() {
+  const isMobile = useIsMobile();
   const { data, isLoading } = useDiagnostics();
 
   if (isLoading || !data) {
@@ -170,6 +173,34 @@ export default function DiagnosticsPage() {
             <Alert severity="info" variant="outlined">
               No projects yet.
             </Alert>
+          ) : isMobile ? (
+            <Stack spacing={1.5}>
+              {data.projects.map((project) => (
+                <Paper key={project.projectId} variant="outlined" sx={{ p: 2 }}>
+                  <Stack spacing={1.25}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="subtitle2" noWrap>
+                        {project.projectName}
+                      </Typography>
+                      <Typography variant="caption" color="text.secondary">
+                        {project.folderName}
+                      </Typography>
+                    </Box>
+
+                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                      <Chip size="small" label={project.status} color="default" variant="outlined" />
+                      <Chip size="small" label={`Original: ${formatBytes(project.originalFileSizeBytes)}`} variant="outlined" />
+                      <Chip size="small" label={`Workspace: ${formatBytes(project.workspaceSizeBytes)}`} variant="outlined" />
+                      <Chip size="small" label={`Total: ${formatBytes(project.totalSizeBytes)}`} variant="outlined" />
+                    </Stack>
+
+                    <Typography variant="caption" color="text.secondary">
+                      Updated {formatDate(project.updatedAtUtc)}
+                    </Typography>
+                  </Stack>
+                </Paper>
+              ))}
+            </Stack>
           ) : (
             <TableContainer>
               <Table size="small">

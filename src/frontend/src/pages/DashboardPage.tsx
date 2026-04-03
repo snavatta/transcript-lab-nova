@@ -20,8 +20,10 @@ import TopBar from '../components/shell/TopBar';
 import CreateFolderDialog from '../components/folders/CreateFolderDialog';
 import { useFolders, useQueue } from '../hooks/useData';
 import ProjectStatusChip from '../components/common/ProjectStatusChip';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 export default function DashboardPage() {
+  const isMobile = useIsMobile();
   const { data: folders, isLoading: foldersLoading } = useFolders();
   const { data: queue, isLoading: queueLoading } = useQueue();
   const [createOpen, setCreateOpen] = useState(false);
@@ -81,9 +83,11 @@ export default function DashboardPage() {
               sx={{
                 display: 'grid',
                 gap: 1,
-                borderLeft: 2,
+                borderTop: { xs: 2, md: 0 },
+                borderLeft: { xs: 0, md: 2 },
                 borderColor: alpha('#3aa0c8', 0.35),
-                pl: 2,
+                pl: { xs: 0, md: 2 },
+                pt: { xs: 1.5, md: 0 },
               }}
             >
               <Typography variant="overline" color="secondary.dark">
@@ -133,7 +137,7 @@ export default function DashboardPage() {
                       >
                         {stat.icon}
                       </Box>
-                      <Typography variant="h4">{stat.value}</Typography>
+                      <Typography variant={isMobile ? 'h5' : 'h4'}>{stat.value}</Typography>
                     </Box>
                     <Box sx={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                       <Typography variant="body2" color="text.secondary">{stat.label}</Typography>

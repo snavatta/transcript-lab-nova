@@ -116,6 +116,7 @@ SherpaOnnxSenseVoice
 WhisperNet
 WhisperNetCuda
 WhisperNetOpenVino
+OpenVinoGenAi
 ```
 
 Implementation note:
@@ -125,7 +126,9 @@ Implementation note:
 - `WhisperNet` uses the Whisper.net managed library with CPU inference (Whisper.net.Runtime) through an isolated helper worker process so runtime selection is per job rather than process-global.
 - `WhisperNetCuda` uses the Whisper.net managed library with NVIDIA CUDA acceleration through the same isolated helper-worker model. Current backend implementation targets the stable `Whisper.net.Runtime.Cuda` runtime. Requires a supported NVIDIA GPU plus CUDA runtime libraries on the host/container.
 - `WhisperNetOpenVino` uses the Whisper.net managed library with Intel OpenVino acceleration (Whisper.net.Runtime.OpenVino) through the same isolated helper-worker model. Requires the OpenVino toolkit (>= 2024.4). Current backend implementation keeps the engine selectable when the helper worker is installed, then performs a runtime probe before each job and fails with a clear error if the host cannot load the required OpenVino libraries.
+- `OpenVinoGenAi` uses a separate isolated Python worker backed by `openvino_genai` and pre-exported public Whisper models. It is intentionally a separate engine from `WhisperNetOpenVino` because it targets a newer OpenVINO runtime/toolchain and is published in a separate image variant.
 - `WhisperNet`, `WhisperNetCuda`, and `WhisperNetOpenVino` use shared ggml model files and support auto-download.
+- `OpenVinoGenAi` uses curated pre-exported model directories under `models/openvino-genai/` and supports managed download/redownload/probe from the settings model manager.
 
 ## ModelName
 Suggested allowed values for MVP:
@@ -142,6 +145,7 @@ Current implementation note:
 - `WhisperNet` supports `tiny`, `base`, `small`, `medium`, `large`
 - `WhisperNetCuda` supports `tiny`, `base`, `small`, `medium`, `large`
 - `WhisperNetOpenVino` supports `tiny`, `base`, `small`, `medium`, `large`
+- `OpenVinoGenAi` supports `tiny-int8`, `base-int8`, `small-fp16`, with `base-int8` as the recommended Arc A310 default
 
 ---
 

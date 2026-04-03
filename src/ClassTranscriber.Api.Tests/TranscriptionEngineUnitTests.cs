@@ -25,6 +25,7 @@ public class TranscriptionEngineUnitTests
             {
                 WorkerPath = workerPath,
                 OpenVinoDevice = "GPU",
+                LogSegments = true,
             }),
             runner,
             NullLogger<WhisperNetCpuTranscriptionEngine>.Instance);
@@ -40,6 +41,7 @@ public class TranscriptionEngineUnitTests
         runner.Requests[0].Mode.Should().Be(WhisperNetWorkerMode.Cpu);
         runner.Requests[0].LanguageMode.Should().Be("Auto");
         runner.Requests[0].LanguageCode.Should().BeNull();
+        runner.Requests[0].LogSegments.Should().BeTrue();
     }
 
     [Fact]
@@ -244,9 +246,89 @@ public class TranscriptionEngineUnitTests
             LanguageMode = "Auto",
             ModelsPath = "/tmp/models",
             AutoDownloadModels = false,
+            LogSegments = false,
             OpenVinoDevice = "GPU",
             OpenVinoCachePath = null,
         }, workerPath, dotNetHostPath: null);
+
+        response.PlainText.Should().Be("ok");
+        response.DetectedLanguage.Should().Be("en");
+        response.DurationMs.Should().Be(10);
+        response.Segments.Should().ContainSingle();
+        response.Segments[0].Text.Should().Be("ok");
+    }
+
+    [Fact]
+    public async Task OpenVinoGenAiEngine_BuildsWorkerRequest_ForFixedLanguage()
+    {
+        var runner = new RecordingOpenVinoGenAiWorkerRunner();
+        var workerScriptPath = CreateTempWorkerFile("openvino-genai-worker.py");
+        var pythonPath = CreateTempWorkerFile("python3");
+        var modelsRoot = CreateTempDirectory();
+        var modelPath = Path.Combine(modelsRoot, "base-int8");
+        Directory.CreateDirectory(modelPath);
+        foreach (var relativePath in OpenVinoGenAiModelCatalog.GetRequired("base-int8").RequiredFiles)
+        {
+            var fullPath = Path.Combine(modelPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
+            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
+            File.WriteAllText(fullPath, "x");
+        }
+
+        var engine = new OpenVinoGenAiTranscriptionEngine(
+            Options.Create(new OpenVinoGenAiOptions
+            {
+                ModelsPath = modelsRoot,
+                PythonPath = pythonPath,
+                WorkerScriptPath = workerScriptPath,
+                Device = "GPU.1",
+                LogSegments = true,
+                AutoDownloadModels = false,
+            }),
+            new StubHttpClientFactory(_ => throw new InvalidOperationException("HTTP should not be used.")),
+            runner,
+            new AvailableOpenVinoGenAiEnvironmentProbe(),
+            NullLogger<OpenVinoGenAiTranscriptionEngine>.Instance);
+
+        await engine.TranscribeAsync("/tmp/audio.wav", new ProjectSettings
+        {
+            Engine = "OpenVinoGenAi",
+            Model = "base-int8",
+            LanguageMode = "Fixed",
+            LanguageCode = "en",
+        });
+
+        runner.Requests.Should().ContainSingle();
+        runner.Requests[0].Model.Should().Be("base-int8");
+        runner.Requests[0].ModelPath.Should().Be(modelPath);
+        runner.Requests[0].Device.Should().Be("GPU.1");
+        runner.Requests[0].LanguageMode.Should().Be("Fixed");
+        runner.Requests[0].LanguageCode.Should().Be("en");
+        runner.Requests[0].LogSegments.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task OpenVinoGenAiWorkerRunner_ParsesFramedJson_WhenStdoutContainsRuntimeNoise()
+    {
+        var workerPath = CreateTempShellWorker("""
+            #!/bin/sh
+            cat >/dev/null
+            printf 'info: OpenVINO GenAI initialized\n'
+            printf '%s\n' '__TRANSCRIPTLAB_OPENVINO_GENAI_RESPONSE_BEGIN__'
+            printf '%s\n' '{"plainText":"ok","segments":[{"startMs":0,"endMs":10,"text":"ok","speaker":null}],"detectedLanguage":"en","durationMs":10}'
+            printf '%s\n' '__TRANSCRIPTLAB_OPENVINO_GENAI_RESPONSE_END__'
+            """);
+
+        var runner = new OpenVinoGenAiWorkerRunner(NullLogger<OpenVinoGenAiWorkerRunner>.Instance);
+        var response = await runner.RunAsync(new OpenVinoGenAiWorkerRequest
+        {
+            AudioPath = "/tmp/audio.wav",
+            Model = "base-int8",
+            ModelPath = "/tmp/models/base-int8",
+            Device = "GPU",
+            LanguageMode = "Auto",
+            LanguageCode = null,
+            LogSegments = false,
+        }, workerPath, workerPath);
 
         response.PlainText.Should().Be("ok");
         response.DetectedLanguage.Should().Be("en");
@@ -281,6 +363,7 @@ public class TranscriptionEngineUnitTests
                 ModelsPath = modelsRoot,
                 Provider = "cpu",
                 NumThreads = 6,
+                LogSegments = true,
                 AutoDownloadModels = false,
                 WorkerPath = CreateTempWorkerFile("sherpa-worker.exe"),
             }),
@@ -301,6 +384,7 @@ public class TranscriptionEngineUnitTests
         runner.Requests[0].Provider.Should().Be("cpu");
         runner.Requests[0].NumThreads.Should().Be(6);
         runner.Requests[0].LanguageCode.Should().Be("es");
+        runner.Requests[0].LogSegments.Should().BeTrue();
         runner.Requests[0].UseInverseTextNormalization.Should().BeTrue();
     }
 
@@ -655,6 +739,27 @@ public class TranscriptionEngineUnitTests
         }
     }
 
+    private sealed class RecordingOpenVinoGenAiWorkerRunner : IOpenVinoGenAiWorkerRunner
+    {
+        public List<OpenVinoGenAiWorkerRequest> Requests { get; } = [];
+
+        public Task<OpenVinoGenAiWorkerResponse> RunAsync(
+            OpenVinoGenAiWorkerRequest request,
+            string pythonPath,
+            string workerScriptPath,
+            CancellationToken ct = default)
+        {
+            Requests.Add(request);
+            return Task.FromResult(new OpenVinoGenAiWorkerResponse
+            {
+                PlainText = "ok",
+                Segments = [new ApiTranscriptSegmentDto { StartMs = 0, EndMs = 10, Text = "ok", Speaker = null }],
+                DetectedLanguage = "en",
+                DurationMs = 10,
+            });
+        }
+    }
+
     private sealed class StubHttpClientFactory(Func<string, HttpResponseMessage> createResponse) : IHttpClientFactory
     {
         public HttpClient CreateClient(string name)
@@ -681,6 +786,11 @@ public class TranscriptionEngineUnitTests
     }
 
     private sealed class AvailableCudaEnvironmentProbe : ICudaEnvironmentProbe
+    {
+        public string? GetAvailabilityError() => null;
+    }
+
+    private sealed class AvailableOpenVinoGenAiEnvironmentProbe : IOpenVinoGenAiEnvironmentProbe
     {
         public string? GetAvailabilityError() => null;
     }

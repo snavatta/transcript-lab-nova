@@ -54,6 +54,10 @@ try
     {
         client.Timeout = Timeout.InfiniteTimeSpan;
     });
+    builder.Services.AddHttpClient("OpenVinoGenAiModelDownloads", client =>
+    {
+        client.Timeout = Timeout.InfiniteTimeSpan;
+    });
 
     // Storage
     builder.Services.Configure<StorageOptions>(builder.Configuration.GetSection("Storage"));
@@ -104,6 +108,11 @@ try
                 ?? builder.Configuration["Transcription:AutoDownloadModels"],
                 out var sherpaAutoDownload))
             o.AutoDownloadModels = sherpaAutoDownload;
+        if (bool.TryParse(
+                builder.Configuration["Transcription:SherpaOnnx:LogSegments"]
+                ?? builder.Configuration["Transcription:LogSegments"],
+                out var sherpaLogSegments))
+            o.LogSegments = sherpaLogSegments;
         o.ModelDownloadBaseUrl = builder.Configuration["Transcription:SherpaOnnx:ModelDownloadBaseUrl"] ?? o.ModelDownloadBaseUrl;
         o.WorkerPath = builder.Configuration["Transcription:SherpaOnnx:WorkerPath"] ?? o.WorkerPath;
         o.DotNetHostPath = builder.Configuration["Transcription:SherpaOnnx:DotNetHostPath"] ?? o.DotNetHostPath;
@@ -123,6 +132,11 @@ try
                 ?? builder.Configuration["Transcription:AutoDownloadModels"],
                 out var senseVoiceAutoDownload))
             o.AutoDownloadModels = senseVoiceAutoDownload;
+        if (bool.TryParse(
+                builder.Configuration["Transcription:SherpaOnnxSenseVoice:LogSegments"]
+                ?? builder.Configuration["Transcription:LogSegments"],
+                out var senseVoiceLogSegments))
+            o.LogSegments = senseVoiceLogSegments;
         o.ModelDownloadBaseUrl = builder.Configuration["Transcription:SherpaOnnxSenseVoice:ModelDownloadBaseUrl"] ?? o.ModelDownloadBaseUrl;
         o.WorkerPath = builder.Configuration["Transcription:SherpaOnnxSenseVoice:WorkerPath"]
             ?? builder.Configuration["Transcription:SherpaOnnx:WorkerPath"]
@@ -143,6 +157,11 @@ try
                 ?? builder.Configuration["Transcription:AutoDownloadModels"],
                 out var autoDownload))
             o.AutoDownloadModels = autoDownload;
+        if (bool.TryParse(
+                builder.Configuration["Transcription:WhisperNet:LogSegments"]
+                ?? builder.Configuration["Transcription:LogSegments"],
+                out var whisperLogSegments))
+            o.LogSegments = whisperLogSegments;
         o.ModelDownloadBaseUrl = builder.Configuration["Transcription:WhisperNet:ModelDownloadBaseUrl"]
             ?? builder.Configuration["Transcription:ModelDownloadBaseUrl"]
             ?? o.ModelDownloadBaseUrl;
@@ -151,15 +170,41 @@ try
         o.OpenVinoDevice = builder.Configuration["Transcription:WhisperNet:OpenVinoDevice"] ?? o.OpenVinoDevice;
         o.OpenVinoCachePath = builder.Configuration["Transcription:WhisperNet:OpenVinoCachePath"];
     });
+    builder.Services.Configure<OpenVinoGenAiOptions>(o =>
+    {
+        o.ModelsPath = builder.Configuration["Transcription:OpenVinoGenAi:ModelsPath"]
+            ?? Path.Combine(
+                builder.Configuration["Storage:BasePath"] ?? "/data",
+                builder.Configuration["Storage:ModelsPath"] ?? "models",
+                "openvino-genai");
+        if (bool.TryParse(
+                builder.Configuration["Transcription:OpenVinoGenAi:AutoDownloadModels"]
+                ?? builder.Configuration["Transcription:AutoDownloadModels"],
+                out var autoDownload))
+            o.AutoDownloadModels = autoDownload;
+        if (bool.TryParse(
+                builder.Configuration["Transcription:OpenVinoGenAi:LogSegments"]
+                ?? builder.Configuration["Transcription:LogSegments"],
+                out var logSegments))
+            o.LogSegments = logSegments;
+        o.ModelDownloadBaseUrl = builder.Configuration["Transcription:OpenVinoGenAi:ModelDownloadBaseUrl"]
+            ?? o.ModelDownloadBaseUrl;
+        o.PythonPath = builder.Configuration["Transcription:OpenVinoGenAi:PythonPath"] ?? o.PythonPath;
+        o.WorkerScriptPath = builder.Configuration["Transcription:OpenVinoGenAi:WorkerScriptPath"] ?? o.WorkerScriptPath;
+        o.Device = builder.Configuration["Transcription:OpenVinoGenAi:Device"] ?? o.Device;
+    });
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, SherpaOnnxTranscriptionEngine>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, SherpaOnnxSenseVoiceTranscriptionEngine>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, WhisperNetCpuTranscriptionEngine>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, WhisperNetCudaTranscriptionEngine>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, WhisperNetOpenVinoTranscriptionEngine>();
+    builder.Services.AddSingleton<IRegisteredTranscriptionEngine, OpenVinoGenAiTranscriptionEngine>();
     builder.Services.AddSingleton<ICudaEnvironmentProbe, CudaEnvironmentProbe>();
     builder.Services.AddSingleton<IOpenVinoEnvironmentProbe, OpenVinoEnvironmentProbe>();
+    builder.Services.AddSingleton<IOpenVinoGenAiEnvironmentProbe, OpenVinoGenAiEnvironmentProbe>();
     builder.Services.AddSingleton<ISherpaOnnxWorkerRunner, SherpaOnnxWorkerRunner>();
     builder.Services.AddSingleton<IWhisperNetWorkerRunner, WhisperNetWorkerRunner>();
+    builder.Services.AddSingleton<IOpenVinoGenAiWorkerRunner, OpenVinoGenAiWorkerRunner>();
     builder.Services.AddSingleton<ITranscriptionEngineRegistry, TranscriptionEngineRegistry>();
     builder.Services.AddSingleton<ISpeakerDiarizer, BasicSpeakerDiarizer>();
 
@@ -194,6 +239,7 @@ try
 
         var openVinoProbe = scope.ServiceProvider.GetRequiredService<IOpenVinoEnvironmentProbe>();
         var cudaProbe = scope.ServiceProvider.GetRequiredService<ICudaEnvironmentProbe>();
+        var openVinoGenAiProbe = scope.ServiceProvider.GetRequiredService<IOpenVinoGenAiEnvironmentProbe>();
         var startupLogger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
         var cudaProbeError = cudaProbe.GetAvailabilityError();
         if (cudaProbeError is not null)
@@ -209,6 +255,14 @@ try
             startupLogger.LogWarning(
                 "{ProbeError} WhisperNetOpenVino will remain selectable, but jobs will fail until the runtime is installed.",
                 openVinoProbeError);
+        }
+
+        var openVinoGenAiProbeError = openVinoGenAiProbe.GetAvailabilityError();
+        if (openVinoGenAiProbeError is not null)
+        {
+            startupLogger.LogWarning(
+                "{ProbeError} OpenVinoGenAi will remain registered, but jobs will fail until the runtime is installed.",
+                openVinoGenAiProbeError);
         }
     }
 

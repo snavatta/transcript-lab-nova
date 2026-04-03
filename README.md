@@ -162,6 +162,7 @@ Configuration in `appsettings.json`:
       "Provider": "cpu",
       "NumThreads": 4,
       "AutoDownloadModels": true,
+      "LogSegments": false,
       "ModelDownloadBaseUrl": "https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models"
     }
   }
@@ -196,16 +197,35 @@ Uses the [Whisper.net](https://github.com/sandrohanea/whisper.net) managed libra
 
 Models use shared `ggml-*.bin` assets and are auto-downloaded on first use. The backend probes for the OpenVino runtime before each job and returns a clear failure if the host cannot load the required libraries.
 
+#### OpenVinoGenAi (Intel GPU, separate image)
+
+Uses a separate isolated Python worker backed by `openvino-genai` and pre-exported public Whisper models from the `OpenVINO/*-ov` model catalog. This engine is intentionally separate from `WhisperNetOpenVino`; it targets a newer OpenVINO runtime/toolchain and is published in its own image variant.
+
+Recommended starting point for the target Intel Arc A310 4 GB:
+
+- `base-int8`
+
+Additional curated models:
+
+- `tiny-int8`
+- `small-fp16`
+
+Models are downloaded into `/data/models/openvino-genai/<model>/` through the settings model manager or automatically on first use when enabled. The engine uses `GPU` by default and can be changed with `Transcription__OpenVinoGenAi__Device`.
+
 Configuration for all WhisperNet engines in `appsettings.json`:
 ```json
 {
   "Transcription": {
+    "LogSegments": false,
     "WhisperNet": {
-      "AutoDownloadModels": true
+      "AutoDownloadModels": true,
+      "LogSegments": false
     }
   }
 }
 ```
+
+When `Transcription:LogSegments` or an engine-specific `...:LogSegments` option is set to `true`, the worker logs each decoded transcript segment to container stderr so it appears in `docker compose logs -f`. The default is `false` to avoid noisy logs on long recordings.
 
 ### Frontend
 
@@ -262,6 +282,18 @@ For Intel Arc hosts, `/dev/dri` is the device mapping you want. It exposes both 
 OPENVINO_DEVICE=GPU.1 docker compose -f docker-compose.yml -f docker-compose.openvino.yml up --build
 ```
 
+To try the separate OpenVINO GenAI path, use:
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.openvino-genai.yml up --build
+```
+
+This override switches the build to `Dockerfile.openvino-genai`, exposes `/dev/dri`, and sets `Transcription__OpenVinoGenAi__Device=GPU` by default. If the Arc card is enumerated as the second OpenVINO GPU device on that host, start it with:
+
+```bash
+OPENVINO_GENAI_DEVICE=GPU.1 docker compose -f docker-compose.yml -f docker-compose.openvino-genai.yml up --build
+```
+
 To inspect the host DRM nodes:
 
 ```bash
@@ -286,6 +318,7 @@ If you want a GPU-backed CasaOS install, change the image in that file to one of
 
 - `ghcr.io/snavatta/transcriptlab-nova-cuda:latest`
 - `ghcr.io/snavatta/transcriptlab-nova-openvino:latest`
+- `ghcr.io/snavatta/transcriptlab-nova-openvino-genai:latest`
 
 For OpenVINO on CasaOS, also add:
 
@@ -298,15 +331,25 @@ environment:
 
 If the Arc card is the second OpenVINO GPU device on that host, use `GPU.1` instead.
 
+For OpenVINO GenAI on CasaOS, use:
+
+```yaml
+devices:
+  - /dev/dri:/dev/dri
+environment:
+  Transcription__OpenVinoGenAi__Device: GPU
+```
+
 For CUDA on CasaOS, the host still needs NVIDIA Container Toolkit and GPU runtime support.
 
 ### Public Container Images
 
-The repository is set up to publish three public GHCR images from GitHub Actions:
+The repository is set up to publish four public GHCR images from GitHub Actions:
 
 - `ghcr.io/<owner>/transcriptlab-nova-cpu`
 - `ghcr.io/<owner>/transcriptlab-nova-cuda`
 - `ghcr.io/<owner>/transcriptlab-nova-openvino`
+- `ghcr.io/<owner>/transcriptlab-nova-openvino-genai`
 
 Each package is published for `linux/amd64` and receives:
 
@@ -320,6 +363,7 @@ Example pulls:
 docker pull ghcr.io/<owner>/transcriptlab-nova-cpu:latest
 docker pull ghcr.io/<owner>/transcriptlab-nova-cuda:latest
 docker pull ghcr.io/<owner>/transcriptlab-nova-openvino:latest
+docker pull ghcr.io/<owner>/transcriptlab-nova-openvino-genai:latest
 ```
 
 Example runs:
@@ -341,6 +385,12 @@ docker run --rm -p 5000:5000 -v transcriptlab-data:/data \
   --device /dev/dri:/dev/dri \
   -e Transcription__WhisperNet__OpenVinoDevice=GPU \
   ghcr.io/<owner>/transcriptlab-nova-openvino:latest
+
+# OpenVINO GenAI
+docker run --rm -p 5000:5000 -v transcriptlab-data:/data \
+  --device /dev/dri:/dev/dri \
+  -e Transcription__OpenVinoGenAi__Device=GPU \
+  ghcr.io/<owner>/transcriptlab-nova-openvino-genai:latest
 ```
 
 If your GitHub Packages defaults keep newly published container packages private, set the package visibility to `Public` after the first publish.
@@ -357,3 +407,8 @@ Host prerequisites:
   - Intel GPU or supported Intel accelerator
   - `/dev/dri` device exposure into the container
   - host graphics stack/driver support compatible with OpenVINO GPU execution
+- OpenVINO GenAI image:
+  - Intel GPU or supported Intel accelerator
+  - `/dev/dri` device exposure into the container
+  - host graphics stack/driver support compatible with OpenVINO GPU execution
+  - Python OpenVINO GenAI runtime supplied by the dedicated image

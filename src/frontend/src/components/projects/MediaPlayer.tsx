@@ -8,6 +8,7 @@ import VolumeOffIcon from '@mui/icons-material/VolumeOff';
 import { formatDuration } from '../../utils/format';
 import type { MediaType } from '../../types';
 import { registerMediaPlayerSeek } from './mediaPlayerController';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 interface Props {
   src: string;
@@ -16,6 +17,7 @@ interface Props {
 }
 
 export default function MediaPlayer({ src, mediaType, onTimeUpdate }: Props) {
+  const isMobile = useIsMobile();
   const mediaRef = useRef<HTMLMediaElement>(null);
   const [playing, setPlaying] = useState(false);
   const [currentTime, setCurrentTime] = useState(0);
@@ -120,41 +122,89 @@ export default function MediaPlayer({ src, mediaType, onTimeUpdate }: Props) {
           size="small"
           sx={{ color: 'primary.light', py: 0.5 }}
         />
-        <Stack direction="row" alignItems="center" spacing={0.5}>
-          <IconButton onClick={togglePlay} size="small" sx={{ color: 'grey.100' }} aria-label={playing ? 'Pause' : 'Play'}>
-            {playing ? <PauseIcon /> : <PlayArrowIcon />}
-          </IconButton>
-          <IconButton onClick={handleStop} size="small" sx={{ color: 'grey.100' }} aria-label="Stop">
-            <StopIcon />
-          </IconButton>
-          <Typography variant="caption" sx={{ minWidth: 100, textAlign: 'center' }}>
-            {formatDuration(currentTime)} / {formatDuration(duration)}
-          </Typography>
-          <Box sx={{ flexGrow: 1 }} />
-          <IconButton onClick={() => setMuted(!muted)} size="small" sx={{ color: 'grey.100' }} aria-label={muted ? 'Unmute' : 'Mute'}>
-            {muted ? <VolumeOffIcon /> : <VolumeUpIcon />}
-          </IconButton>
-          <Slider
-            value={muted ? 0 : volume}
-            min={0}
-            max={1}
-            step={0.05}
-            onChange={handleVolumeChange}
-            size="small"
-            sx={{ width: 80, color: 'grey.400' }}
-          />
-          <Select
-            value={speed}
-            onChange={(e) => handleSpeedChange(e.target.value as number)}
-            size="small"
-            variant="standard"
-            sx={{ color: 'grey.100', fontSize: '0.75rem', '& .MuiSelect-icon': { color: 'grey.400' } }}
-          >
-            {[0.5, 0.75, 1, 1.25, 1.5, 2].map((s) => (
-              <MenuItem key={s} value={s}>{s}x</MenuItem>
-            ))}
-          </Select>
-        </Stack>
+        {isMobile ? (
+          <Stack spacing={1.25}>
+            <Stack direction="row" alignItems="center" spacing={0.5}>
+              <IconButton onClick={togglePlay} size="small" sx={{ color: 'grey.100' }} aria-label={playing ? 'Pause' : 'Play'}>
+                {playing ? <PauseIcon /> : <PlayArrowIcon />}
+              </IconButton>
+              <IconButton onClick={handleStop} size="small" sx={{ color: 'grey.100' }} aria-label="Stop">
+                <StopIcon />
+              </IconButton>
+              <Box sx={{ flexGrow: 1 }} />
+              <Typography variant="caption" sx={{ textAlign: 'right' }}>
+                {formatDuration(currentTime)} / {formatDuration(duration)}
+              </Typography>
+            </Stack>
+
+            <Stack direction="row" alignItems="center" spacing={1}>
+              <IconButton onClick={() => setMuted(!muted)} size="small" sx={{ color: 'grey.100' }} aria-label={muted ? 'Unmute' : 'Mute'}>
+                {muted ? <VolumeOffIcon /> : <VolumeUpIcon />}
+              </IconButton>
+              <Slider
+                value={muted ? 0 : volume}
+                min={0}
+                max={1}
+                step={0.05}
+                onChange={handleVolumeChange}
+                size="small"
+                sx={{ flexGrow: 1, color: 'grey.400' }}
+              />
+              <Select
+                value={speed}
+                onChange={(e) => handleSpeedChange(e.target.value as number)}
+                size="small"
+                variant="standard"
+                sx={{
+                  minWidth: 72,
+                  color: 'grey.100',
+                  fontSize: '0.75rem',
+                  '& .MuiSelect-icon': { color: 'grey.400' },
+                }}
+              >
+                {[0.5, 0.75, 1, 1.25, 1.5, 2].map((s) => (
+                  <MenuItem key={s} value={s}>{s}x</MenuItem>
+                ))}
+              </Select>
+            </Stack>
+          </Stack>
+        ) : (
+          <Stack direction="row" alignItems="center" spacing={0.5}>
+            <IconButton onClick={togglePlay} size="small" sx={{ color: 'grey.100' }} aria-label={playing ? 'Pause' : 'Play'}>
+              {playing ? <PauseIcon /> : <PlayArrowIcon />}
+            </IconButton>
+            <IconButton onClick={handleStop} size="small" sx={{ color: 'grey.100' }} aria-label="Stop">
+              <StopIcon />
+            </IconButton>
+            <Typography variant="caption" sx={{ minWidth: 100, textAlign: 'center' }}>
+              {formatDuration(currentTime)} / {formatDuration(duration)}
+            </Typography>
+            <Box sx={{ flexGrow: 1 }} />
+            <IconButton onClick={() => setMuted(!muted)} size="small" sx={{ color: 'grey.100' }} aria-label={muted ? 'Unmute' : 'Mute'}>
+              {muted ? <VolumeOffIcon /> : <VolumeUpIcon />}
+            </IconButton>
+            <Slider
+              value={muted ? 0 : volume}
+              min={0}
+              max={1}
+              step={0.05}
+              onChange={handleVolumeChange}
+              size="small"
+              sx={{ width: 80, color: 'grey.400' }}
+            />
+            <Select
+              value={speed}
+              onChange={(e) => handleSpeedChange(e.target.value as number)}
+              size="small"
+              variant="standard"
+              sx={{ color: 'grey.100', fontSize: '0.75rem', '& .MuiSelect-icon': { color: 'grey.400' } }}
+            >
+              {[0.5, 0.75, 1, 1.25, 1.5, 2].map((s) => (
+                <MenuItem key={s} value={s}>{s}x</MenuItem>
+              ))}
+            </Select>
+          </Stack>
+        )}
       </Box>
     </Box>
   );

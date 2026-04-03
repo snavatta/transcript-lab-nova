@@ -16,6 +16,7 @@ public sealed record SherpaOnnxWorkerRequest
     public required int NumThreads { get; init; }
     public required string LanguageMode { get; init; }
     public string? LanguageCode { get; init; }
+    public required bool LogSegments { get; init; }
 }
 
 public sealed record SherpaOnnxWorkerResponse

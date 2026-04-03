@@ -212,7 +212,14 @@ export default function UploadBatchDrawer({
       PaperProps={{ sx: { width: { xs: '100%', sm: 560 } } }}
     >
       <Box sx={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-        <Box sx={{ px: 3, py: 2.5 }}>
+        <Box
+          sx={{
+            px: { xs: 2, sm: 3 },
+            py: 2.5,
+            pl: { xs: 'calc(16px + var(--safe-area-left))', sm: 3 },
+            pr: { xs: 'calc(16px + var(--safe-area-right))', sm: 3 },
+          }}
+        >
           <Typography variant="h6">Review Batch Upload</Typography>
           <Typography variant="body2" color="text.secondary" sx={{ mt: 0.75 }}>
             Confirm project names and transcription settings before creating projects in this folder.
@@ -221,7 +228,19 @@ export default function UploadBatchDrawer({
 
         <Divider />
 
-        <Box sx={{ flex: 1, overflowY: 'auto', px: 3, py: 2.5, display: 'flex', flexDirection: 'column', gap: 3 }}>
+        <Box
+          sx={{
+            flex: 1,
+            overflowY: 'auto',
+            px: { xs: 2, sm: 3 },
+            py: 2.5,
+            pl: { xs: 'calc(16px + var(--safe-area-left))', sm: 3 },
+            pr: { xs: 'calc(16px + var(--safe-area-right))', sm: 3 },
+            display: 'flex',
+            flexDirection: 'column',
+            gap: 3,
+          }}
+        >
           {error && <Alert severity="error">{error}</Alert>}
 
           {(settingsLoading || optionsLoading || !form) ? (
@@ -369,7 +388,22 @@ export default function UploadBatchDrawer({
 
         <Divider />
 
-        <Box sx={{ px: 3, py: 2, display: 'flex', justifyContent: 'flex-end', gap: 1.5 }}>
+        <Box
+          sx={{
+            position: 'sticky',
+            bottom: 0,
+            px: { xs: 2, sm: 3 },
+            py: 2,
+            pl: { xs: 'calc(16px + var(--safe-area-left))', sm: 3 },
+            pr: { xs: 'calc(16px + var(--safe-area-right))', sm: 3 },
+            pb: { xs: 'calc(16px + var(--safe-area-bottom))', sm: 2 },
+            display: 'flex',
+            flexDirection: { xs: 'column-reverse', sm: 'row' },
+            justifyContent: 'flex-end',
+            gap: 1.5,
+            bgcolor: 'background.paper',
+          }}
+        >
           <Button variant="text" onClick={onClose} disabled={saving}>
             Cancel
           </Button>

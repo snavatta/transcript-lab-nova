@@ -6,6 +6,7 @@ import { formatTimestamp } from '../../utils/format';
 import { seekMediaPlayer } from './mediaPlayerController';
 import { useNotification } from '../notifications';
 import type { TranscriptDto, TranscriptViewMode } from '../../types';
+import { useIsMobile } from '../../hooks/useIsMobile';
 
 interface Props {
   transcript: TranscriptDto;
@@ -13,6 +14,7 @@ interface Props {
 }
 
 export default function TranscriptViewer({ transcript, defaultViewMode = 'Readable' }: Props) {
+  const isMobile = useIsMobile();
   const [viewMode, setViewMode] = useState<TranscriptViewMode>(defaultViewMode);
   const [search, setSearch] = useState('');
   const { notify } = useNotification();
@@ -36,7 +38,7 @@ export default function TranscriptViewer({ transcript, defaultViewMode = 'Readab
 
   return (
     <Box>
-      <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 2 }}>
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 1.25, mb: 2 }}>
         <TextField
           size="small"
           placeholder="Search transcript..."
@@ -53,23 +55,31 @@ export default function TranscriptViewer({ transcript, defaultViewMode = 'Readab
           }}
           sx={{ flexGrow: 1 }}
         />
-        <ToggleButtonGroup
-          value={viewMode}
-          exclusive
-          onChange={(_, v) => { if (v) setViewMode(v); }}
-          size="small"
-        >
-          <ToggleButton value="Readable">Readable</ToggleButton>
-          <ToggleButton value="Timestamped">Timestamped</ToggleButton>
-        </ToggleButtonGroup>
-        <Tooltip title="Copy transcript">
-          <IconButton onClick={handleCopy} size="small" aria-label="Copy transcript">
-            <ContentCopyIcon fontSize="small" />
-          </IconButton>
-        </Tooltip>
+        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, flexWrap: 'wrap' }}>
+          <ToggleButtonGroup
+            value={viewMode}
+            exclusive
+            onChange={(_, v) => { if (v) setViewMode(v); }}
+            size="small"
+            sx={{
+              width: { xs: '100%', sm: 'auto' },
+              '& .MuiToggleButton-root': {
+                flex: { xs: 1, sm: '0 0 auto' },
+              },
+            }}
+          >
+            <ToggleButton value="Readable">Readable</ToggleButton>
+            <ToggleButton value="Timestamped">Timestamped</ToggleButton>
+          </ToggleButtonGroup>
+          <Tooltip title="Copy transcript">
+            <IconButton onClick={handleCopy} size="small" aria-label="Copy transcript">
+              <ContentCopyIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
+        </Box>
       </Box>
 
-      <Box sx={{ maxHeight: 'calc(100vh - 340px)', overflow: 'auto', pr: 1 }}>
+      <Box sx={{ maxHeight: { xs: 'none', md: 'calc(100vh - 340px)' }, overflow: { xs: 'visible', md: 'auto' }, pr: { xs: 0, md: 1 } }}>
         {viewMode === 'Readable' ? (
           <Typography
             variant="body1"
@@ -82,14 +92,24 @@ export default function TranscriptViewer({ transcript, defaultViewMode = 'Readab
         ) : (
           <Box>
             {filteredSegments.map((segment, idx) => (
-              <Box key={idx} sx={{ display: 'flex', gap: 1.5, mb: 1, '&:hover': { bgcolor: 'action.hover' }, borderRadius: 1, p: 0.5 }}>
+              <Box
+                key={idx}
+                sx={{
+                  display: 'grid',
+                  gridTemplateColumns: { xs: '1fr', sm: '60px minmax(0, 1fr)' },
+                  gap: { xs: 0.5, sm: 1.5 },
+                  mb: 1,
+                  '&:hover': { bgcolor: 'action.hover' },
+                  borderRadius: 1,
+                  p: 0.5,
+                }}
+              >
                 <Typography
                   variant="caption"
                   sx={{
                     color: 'primary.main',
                     cursor: 'pointer',
                     fontFamily: 'monospace',
-                    minWidth: 60,
                     pt: 0.3,
                     flexShrink: 0,
                     '&:hover': { textDecoration: 'underline' },
@@ -114,7 +134,7 @@ export default function TranscriptViewer({ transcript, defaultViewMode = 'Readab
 
       {transcript.detectedLanguage && (
         <Typography variant="caption" color="text.secondary" sx={{ mt: 1, display: 'block' }}>
-          Detected language: {transcript.detectedLanguage} &bull; {transcript.segmentCount} segments
+          Detected language: {transcript.detectedLanguage}{isMobile ? ' • ' : ' • '}{transcript.segmentCount} segments
         </Typography>
       )}
     </Box>

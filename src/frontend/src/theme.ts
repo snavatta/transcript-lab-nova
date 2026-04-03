@@ -101,6 +101,11 @@ let theme = createTheme({
   components: {
     MuiCssBaseline: {
       styleOverrides: {
+        ':root': {
+          '--safe-area-left': 'env(safe-area-inset-left, 0px)',
+          '--safe-area-right': 'env(safe-area-inset-right, 0px)',
+          '--safe-area-bottom': 'env(safe-area-inset-bottom, 0px)',
+        },
         body: {
           backgroundColor: '#f3f4f6',
         },

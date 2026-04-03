@@ -46,11 +46,14 @@ internal static class SherpaOnnxWorkerProcessor
             var wave = WaveFileReader.ReadMonoPcm(request.AudioPath);
             Console.Error.WriteLine($"SherpaOnnx worker loaded WAV. sampleRate={wave.SampleRate}, durationMs={wave.DurationMs}, sampleCount={wave.Samples.Length}");
             var decoded = request.Backend == SherpaOnnxBackend.Whisper
-                ? SherpaOnnxWhisperChunkProcessor.Process(config, wave)
+                ? SherpaOnnxWhisperChunkProcessor.Process(config, wave, request.LogSegments)
                 : SherpaOnnxSinglePassProcessor.Process(config, wave);
             var detectedLanguage = string.Equals(request.LanguageMode, "Fixed", StringComparison.OrdinalIgnoreCase)
                 ? request.LanguageCode?.Trim()
                 : null;
+
+            if (request.LogSegments && request.Backend != SherpaOnnxBackend.Whisper)
+                SherpaOnnxSegmentLogger.LogSegments(decoded.Segments, "SherpaOnnx");
 
             Console.Error.WriteLine(
                 $"SherpaOnnx worker decode complete. segments={decoded.Segments.Length}, plainTextLength={decoded.PlainText.Length}");
@@ -167,7 +170,7 @@ internal static class SherpaOnnxWhisperChunkProcessor
 {
     internal const int MaxChunkDurationMs = 28_000;
 
-    public static SherpaOnnxDecodedTranscript Process(OfflineRecognizerConfig config, WaveFileData wave)
+    public static SherpaOnnxDecodedTranscript Process(OfflineRecognizerConfig config, WaveFileData wave, bool logSegments = false)
     {
         var chunks = CreateChunks(wave);
         if (chunks.Count == 0)
@@ -196,6 +199,8 @@ internal static class SherpaOnnxWhisperChunkProcessor
                 plainTextParts.Add(decoded.PlainText.Trim());
 
             segments.AddRange(decoded.Segments);
+            if (logSegments)
+                SherpaOnnxSegmentLogger.LogSegments(decoded.Segments, $"SherpaOnnx chunk {chunkIndex + 1}/{chunks.Count}");
         }
 
         Console.Error.WriteLine($"SherpaOnnx whisper chunked decode finished. segments={segments.Count}");
@@ -231,6 +236,22 @@ internal static class SherpaOnnxWhisperChunkProcessor
 
         return chunks;
     }
+}
+
+internal static class SherpaOnnxSegmentLogger
+{
+    public static void LogSegments(IReadOnlyList<TranscriptSegmentDto> segments, string scope)
+    {
+        for (var index = 0; index < segments.Count; index++)
+        {
+            var segment = segments[index];
+            Console.Error.WriteLine(
+                $"{scope} segment {index + 1}: startMs={segment.StartMs}, endMs={segment.EndMs}, text={FormatSegmentText(segment.Text)}");
+        }
+    }
+
+    private static string FormatSegmentText(string text)
+        => text.Replace('\r', ' ').Replace('\n', ' ').Trim();
 }
 
 internal sealed record WaveFileData(float[] Samples, int SampleRate, long DurationMs);
@@ -406,6 +427,7 @@ internal sealed record SherpaOnnxWorkerRequest
     public required int NumThreads { get; init; }
     public required string LanguageMode { get; init; }
     public string? LanguageCode { get; init; }
+    public required bool LogSegments { get; init; }
 }
 
 internal sealed record SherpaOnnxWorkerResponse

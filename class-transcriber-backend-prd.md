@@ -338,11 +338,13 @@ Current backend extension points may additionally expose:
 - `WhisperNet`
 - `WhisperNetCuda`
 - `WhisperNetOpenVino`
+- `OpenVinoGenAi`
 
 Implementation note:
 - `SherpaOnnx` may run on a local .NET runtime path or isolated helper worker as long as it stays behind the transcription engine abstraction.
 - `SherpaOnnxSenseVoice` may run on the same local .NET runtime path or isolated helper worker pattern, but should remain a distinct engine option from Whisper-backed `SherpaOnnx`.
 - `WhisperNet` CPU, `WhisperNetCuda`, and `WhisperNetOpenVino` should run through isolated helper worker processes so runtime selection remains per project/job.
+- `OpenVinoGenAi` should run through a separate isolated Python worker process and separate image/runtime path rather than sharing the ABI-pinned `WhisperNetOpenVino` container.
 
 ## Suggested model values for MVP
 - `tiny`
@@ -386,6 +388,8 @@ Recommended folders:
 - temporary processing artifacts go under `temp/`
 - transcription model files may live under `models/` if needed
 - missing ggml WhisperNet model files may be auto-downloaded into `models/` on first use when runtime configuration allows it
+- `OpenVinoGenAi` should keep downloaded pre-exported models under a separate subtree such as `models/openvino-genai/<model>/`
+- runtime configuration may optionally enable per-segment worker logging for WhisperNet and SherpaOnnx engines to aid debugging long-running jobs; default behavior should keep this disabled to avoid excessive log volume
 
 ### Important storage rule
 The backend must not rely on database blobs for large media files.

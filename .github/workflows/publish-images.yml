@@ -23,6 +23,8 @@ jobs:
             dockerfile: Dockerfile.cuda
           - variant: openvino
             dockerfile: Dockerfile.openvino
+          - variant: openvino-genai
+            dockerfile: Dockerfile.openvino-genai
 
     steps:
       - uses: actions/checkout@v4

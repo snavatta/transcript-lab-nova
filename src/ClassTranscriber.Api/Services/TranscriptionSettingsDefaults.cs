@@ -6,6 +6,7 @@ internal static class TranscriptionSettingsDefaults
 {
     public const string PreferredEngine = "WhisperNet";
     public const string PreferredModel = "small";
+    public const string PreferredOpenVinoGenAiModel = "base-int8";
 
     public static string ResolveSupportedEngine(ITranscriptionEngineRegistry engineRegistry, string? requestedEngine)
     {
@@ -26,10 +27,11 @@ internal static class TranscriptionSettingsDefaults
             return normalized;
 
         var supportedModels = engineRegistry.GetSupportedModels(engine);
-        if (supportedModels.Contains(PreferredModel, StringComparer.OrdinalIgnoreCase))
-            return PreferredModel;
+        var preferredModel = GetPreferredModel(engine);
+        if (supportedModels.Contains(preferredModel, StringComparer.OrdinalIgnoreCase))
+            return preferredModel;
 
-        return supportedModels.FirstOrDefault() ?? PreferredModel;
+        return supportedModels.FirstOrDefault() ?? preferredModel;
     }
 
     public static (string LanguageMode, string? LanguageCode) ResolveSupportedLanguage(
@@ -51,4 +53,9 @@ internal static class TranscriptionSettingsDefaults
 
         return ("Auto", null);
     }
+
+    private static string GetPreferredModel(string engine)
+        => string.Equals(engine, "OpenVinoGenAi", StringComparison.OrdinalIgnoreCase)
+            ? PreferredOpenVinoGenAiModel
+            : PreferredModel;
 }

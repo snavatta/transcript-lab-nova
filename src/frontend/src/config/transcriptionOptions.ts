@@ -4,6 +4,7 @@ const ENGINE_MODEL_OPTIONS = {
   WhisperNet: ['tiny', 'base', 'small', 'medium', 'large'],
   WhisperNetCuda: ['tiny', 'base', 'small', 'medium', 'large'],
   WhisperNetOpenVino: ['tiny', 'base', 'small', 'medium', 'large'],
+  OpenVinoGenAi: ['base-int8', 'small-fp16', 'tiny-int8'],
 } as const;
 
 export const TRANSCRIPTION_ENGINES = Object.keys(ENGINE_MODEL_OPTIONS) as Array<keyof typeof ENGINE_MODEL_OPTIONS>;

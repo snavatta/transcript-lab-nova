@@ -1,0 +1,8 @@
+services:
+  transcriptlab:
+    build:
+      dockerfile: Dockerfile.openvino-genai
+    devices:
+      - /dev/dri:/dev/dri
+    environment:
+      - Transcription__OpenVinoGenAi__Device=${OPENVINO_GENAI_DEVICE:-GPU}

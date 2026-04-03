@@ -7,6 +7,7 @@ public sealed class WhisperNetOptions
 {
     public string ModelsPath { get; set; } = "/data/models";
     public bool AutoDownloadModels { get; set; } = true;
+    public bool LogSegments { get; set; }
     public string ModelDownloadBaseUrl { get; set; } = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
     public string WorkerPath { get; set; } = "ClassTranscriber.WhisperNet.Worker.dll";
     public string DotNetHostPath { get; set; } = "dotnet";
@@ -77,6 +78,7 @@ public abstract class WhisperNetTranscriptionEngineBase : IRegisteredTranscripti
             LanguageCode = settings.LanguageCode,
             ModelsPath = Path.GetFullPath(_options.ModelsPath),
             AutoDownloadModels = _options.AutoDownloadModels,
+            LogSegments = _options.LogSegments,
             OpenVinoDevice = _options.OpenVinoDevice,
             OpenVinoCachePath = ResolveOptionalPath(_options.OpenVinoCachePath),
         };

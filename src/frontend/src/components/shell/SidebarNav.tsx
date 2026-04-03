@@ -19,8 +19,8 @@ import QueueIcon from '@mui/icons-material/Queue';
 import SettingsIcon from '@mui/icons-material/Settings';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { useLocation, useRoute } from 'wouter';
-
-const DRAWER_WIDTH = 224;
+import { useShellLayout } from './ShellLayoutContext';
+import { DRAWER_WIDTH } from './layout';
 
 const navItems = [
   { label: 'Dashboard', icon: <DashboardIcon />, path: '/', group: 'primary' },
@@ -33,6 +33,7 @@ const navItems = [
 export default function SidebarNav() {
   const [location, navigate] = useLocation();
   const [isFolder] = useRoute('/folders/:id');
+  const { isMobile, mobileNavOpen, closeMobileNav } = useShellLayout();
   const primaryItems = navItems.filter((item) => item.group === 'primary');
   const utilityItems = navItems.filter((item) => item.group === 'utility');
 
@@ -42,22 +43,15 @@ export default function SidebarNav() {
     return location.startsWith(path);
   };
 
-  return (
-    <Drawer
-      variant="permanent"
-      sx={{
-        width: DRAWER_WIDTH,
-        flexShrink: 0,
-        '& .MuiDrawer-paper': {
-          width: DRAWER_WIDTH,
-          boxSizing: 'border-box',
-          background: `linear-gradient(180deg, ${alpha('#ffffff', 0.98)} 0%, ${alpha('#f7f8fb', 0.98)} 100%)`,
-          borderRight: `1px solid ${alpha('#16365d', 0.08)}`,
-          px: 1.25,
-          py: 1.25,
-        },
-      }}
-    >
+  const handleNavigate = (path: string) => {
+    navigate(path);
+    if (isMobile) {
+      closeMobileNav();
+    }
+  };
+
+  const drawerContent = (
+    <>
       <Toolbar
         disableGutters
         sx={{
@@ -123,7 +117,7 @@ export default function SidebarNav() {
               <ListItemButton
                 key={item.path}
                 selected={active}
-                onClick={() => navigate(item.path)}
+                onClick={() => handleNavigate(item.path)}
                 sx={{
                   borderRadius: 1.5,
                   mb: 0.375,
@@ -194,7 +188,7 @@ export default function SidebarNav() {
               <ListItemButton
                 key={item.path}
                 selected={active}
-                onClick={() => navigate(item.path)}
+                onClick={() => handleNavigate(item.path)}
                 sx={{
                   borderRadius: 1.5,
                   minHeight: 40,
@@ -225,8 +219,49 @@ export default function SidebarNav() {
           })}
         </List>
       </Box>
+    </>
+  );
+
+  return isMobile ? (
+    <Drawer
+      open={mobileNavOpen}
+      onClose={closeMobileNav}
+      variant="temporary"
+      ModalProps={{ keepMounted: true }}
+      sx={{
+        display: { xs: 'block', md: 'none' },
+        '& .MuiDrawer-paper': {
+          width: 'min(88vw, 320px)',
+          boxSizing: 'border-box',
+          background: `linear-gradient(180deg, ${alpha('#ffffff', 0.98)} 0%, ${alpha('#f7f8fb', 0.98)} 100%)`,
+          borderRight: `1px solid ${alpha('#16365d', 0.08)}`,
+          pl: 'calc(10px + var(--safe-area-left))',
+          pr: 1.25,
+          pt: 1.25,
+          pb: 'calc(10px + var(--safe-area-bottom))',
+        },
+      }}
+    >
+      {drawerContent}
+    </Drawer>
+  ) : (
+    <Drawer
+      variant="permanent"
+      sx={{
+        display: { xs: 'none', md: 'block' },
+        width: DRAWER_WIDTH,
+        flexShrink: 0,
+        '& .MuiDrawer-paper': {
+          width: DRAWER_WIDTH,
+          boxSizing: 'border-box',
+          background: `linear-gradient(180deg, ${alpha('#ffffff', 0.98)} 0%, ${alpha('#f7f8fb', 0.98)} 100%)`,
+          borderRight: `1px solid ${alpha('#16365d', 0.08)}`,
+          px: 1.25,
+          py: 1.25,
+        },
+      }}
+    >
+      {drawerContent}
     </Drawer>
   );
 }
-
-export { DRAWER_WIDTH };

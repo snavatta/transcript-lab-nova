@@ -8,7 +8,7 @@
 - **Implicit usings** - Allowed for standard SDK ergonomics
 - **Docker** - Required deployment target for local and homelab environments
 - **Linux-first runtime support** - Backend must run correctly in Linux containers
-- Public container distribution may publish separate CPU, CUDA, and OpenVino image variants when they remain behaviorally equivalent aside from runtime acceleration dependencies
+- Public container distribution may publish separate CPU, CUDA, OpenVino, and OpenVino GenAI image variants when they remain behaviorally equivalent aside from runtime acceleration dependencies
 
 ## Homelab Hardware Assumptions
 - Target host baseline: **Intel i3-12100KF**, **16 GB RAM**, **Intel Arc A310 4 GB**
@@ -57,6 +57,7 @@
 - **WhisperNet-based implementation** - Required default MVP engine family
 - **SherpaOnnx** via the official local **.NET runtime/package** is approved behind the engine abstraction; running it through an isolated helper worker process is allowed when needed for cancellation or runtime isolation
 - **Whisper.net** managed library with **Whisper.net.Runtime** (CPU), **Whisper.net.Runtime.Cuda** (NVIDIA GPU), and **Whisper.net.Runtime.OpenVino** (Intel GPU) runtimes are approved behind the engine abstraction, but CPU, CUDA, and OpenVino execution must run through isolated helper worker processes because Whisper.net runtime loading is process-global
+- A separate **Python worker** backed by **openvino**, **openvino-tokenizers**, and **openvino-genai** is approved for a distinct Intel `OpenVinoGenAi` engine when it uses pre-exported public Whisper models and remains behind the same engine abstraction
 - Keep engine-specific logic behind a dedicated transcription service and engine interface
 - Speaker diarization may be implemented as a lightweight local post-processing step over prepared audio and transcript timestamps rather than a separate heavyweight external service
 
@@ -70,6 +71,7 @@
 - **appsettings.json + environment-specific overrides + environment variables** - Standard configuration sources
 - Use typed options for storage paths, database connection, FFmpeg location, and transcription settings
 - Expose typed options for worker concurrency, Sherpa runtime settings, Whisper.net worker path/host settings, and optional GPU/transcription runtime settings
+- Optional debug-oriented worker logging such as per-segment transcription logs must be configurable and disabled by default
 - Secrets should come from environment variables or deployment configuration, not committed files
 - Local development defaults should keep runtime data outside tracked source directories
 

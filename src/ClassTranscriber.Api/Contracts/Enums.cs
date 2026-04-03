@@ -36,5 +36,6 @@ public enum TranscriptionEngine
     SherpaOnnxSenseVoice,
     WhisperNet,
     WhisperNetCuda,
-    WhisperNetOpenVino
+    WhisperNetOpenVino,
+    OpenVinoGenAi
 }

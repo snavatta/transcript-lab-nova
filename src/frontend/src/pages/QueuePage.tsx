@@ -1,6 +1,8 @@
 import {
   Box, Typography, Table, TableBody, TableCell, TableContainer,
   TableHead, TableRow, Paper, Button, Skeleton, Tabs, Tab,
+  Chip,
+  Stack,
 } from '@mui/material';
 import ReplayIcon from '@mui/icons-material/Replay';
 import CancelIcon from '@mui/icons-material/Cancel';
@@ -17,8 +19,10 @@ import { useSWRConfig } from 'swr';
 import { formatDuration, formatDate, formatBytes } from '../utils/format';
 import { formatEngineLabel } from '../utils/transcription';
 import type { QueueItemDto } from '../types';
+import { useIsMobile } from '../hooks/useIsMobile';
 
 export default function QueuePage() {
+  const isMobile = useIsMobile();
   const { data: queue, isLoading } = useQueue();
   const [tab, setTab] = useState(0);
   const [retryProjectId, setRetryProjectId] = useState<string | null>(null);
@@ -61,7 +65,7 @@ export default function QueuePage() {
         <Skeleton variant="rounded" height={300} />
       ) : (
         <>
-          <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }}>
+          <Tabs value={tab} onChange={(_, v) => setTab(v)} sx={{ mb: 2 }} variant="scrollable" allowScrollButtonsMobile>
             {sections.map((s, i) => (
               <Tab key={i} label={`${s.label} (${s.items.length})`} />
             ))}
@@ -73,6 +77,54 @@ export default function QueuePage() {
                 ? 'No jobs'
                 : `No ${sections[tab].label.toLowerCase()} jobs`}
             />
+          ) : isMobile ? (
+            <Stack spacing={1.5}>
+              {currentItems.map((item: QueueItemDto) => (
+                <Paper
+                  key={item.id}
+                  variant="outlined"
+                  sx={{ p: 2, cursor: 'pointer' }}
+                  onClick={() => navigate(`/projects/${item.id}`)}
+                >
+                  <Stack spacing={1.25}>
+                    <Box sx={{ minWidth: 0 }}>
+                      <Typography variant="subtitle2" noWrap>{item.name}</Typography>
+                      <Typography variant="caption" color="text.secondary">{item.folderName}</Typography>
+                    </Box>
+
+                    <Stack direction="row" spacing={1} useFlexGap flexWrap="wrap">
+                      <ProjectStatusChip status={item.status} />
+                      <Chip size="small" label={`${formatEngineLabel(item.engine)} / ${item.model}`} variant="outlined" />
+                      <Chip size="small" label={`Duration: ${formatDuration(item.durationMs)}`} variant="outlined" />
+                      <Chip size="small" label={`Transcribed: ${formatDuration(item.transcriptionElapsedMs)}`} variant="outlined" />
+                      <Chip size="small" label={`Size: ${formatBytes(item.totalSizeBytes)}`} variant="outlined" />
+                    </Stack>
+
+                    <Typography variant="caption" color="text.secondary">
+                      Created {formatDate(item.createdAtUtc)}
+                    </Typography>
+
+                    <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }} onClick={(event) => event.stopPropagation()}>
+                      {item.status === 'Failed' && (
+                        <Button size="small" startIcon={<ReplayIcon />} onClick={() => setRetryProjectId(item.id)}>
+                          Retry
+                        </Button>
+                      )}
+                      {item.status === 'Queued' && (
+                        <Button size="small" startIcon={<CancelIcon />} onClick={() => handleCancel(item.id)}>
+                          Cancel
+                        </Button>
+                      )}
+                      {(item.status === 'PreparingMedia' || item.status === 'Transcribing') && (
+                        <Button size="small" color="warning" startIcon={<CancelIcon />} onClick={() => handleCancel(item.id)}>
+                          Stop
+                        </Button>
+                      )}
+                    </Box>
+                  </Stack>
+                </Paper>
+              ))}
+            </Stack>
           ) : (
             <TableContainer component={Paper} variant="outlined">
               <Table size="small">
