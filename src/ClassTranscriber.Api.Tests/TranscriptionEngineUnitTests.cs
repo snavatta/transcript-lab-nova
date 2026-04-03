@@ -224,6 +224,38 @@ public class TranscriptionEngineUnitTests
     }
 
     [Fact]
+    public async Task WhisperNetWorkerRunner_ParsesFramedJson_WhenStdoutContainsNativeNoise()
+    {
+        var workerPath = CreateTempShellWorker("""
+            #!/bin/sh
+            cat >/dev/null
+            printf 'info: OpenVINO runtime initialized\n'
+            printf '%s\n' '__TRANSCRIPTLAB_WHISPERNET_RESPONSE_BEGIN__'
+            printf '%s\n' '{"plainText":"ok","segments":[{"startMs":0,"endMs":10,"text":"ok","speaker":null}],"detectedLanguage":"en","durationMs":10}'
+            printf '%s\n' '__TRANSCRIPTLAB_WHISPERNET_RESPONSE_END__'
+            """);
+
+        var runner = new WhisperNetWorkerRunner(NullLogger<WhisperNetWorkerRunner>.Instance);
+        var response = await runner.RunAsync(new WhisperNetWorkerRequest
+        {
+            Mode = WhisperNetWorkerMode.OpenVino,
+            AudioPath = "/tmp/audio.wav",
+            Model = "small",
+            LanguageMode = "Auto",
+            ModelsPath = "/tmp/models",
+            AutoDownloadModels = false,
+            OpenVinoDevice = "GPU",
+            OpenVinoCachePath = null,
+        }, workerPath, dotNetHostPath: null);
+
+        response.PlainText.Should().Be("ok");
+        response.DetectedLanguage.Should().Be("en");
+        response.DurationMs.Should().Be(10);
+        response.Segments.Should().ContainSingle();
+        response.Segments[0].Text.Should().Be("ok");
+    }
+
+    [Fact]
     public async Task SherpaOnnxEngine_BuildsWorkerRequest_FromResolvedModel()
     {
         var modelsRoot = CreateTempDirectory();
@@ -534,6 +566,18 @@ public class TranscriptionEngineUnitTests
     {
         var path = Path.Combine(CreateTempDirectory(), fileName);
         File.WriteAllText(path, "worker");
+        return path;
+    }
+
+    private static string CreateTempShellWorker(string content)
+    {
+        var path = Path.Combine(CreateTempDirectory(), "worker.sh");
+        File.WriteAllText(path, content.ReplaceLineEndings("\n"));
+        if (!OperatingSystem.IsWindows())
+        {
+            File.SetUnixFileMode(path, UnixFileMode.UserRead | UnixFileMode.UserWrite | UnixFileMode.UserExecute);
+        }
+
         return path;
     }
 

@@ -11,6 +11,8 @@ return exitCode;
 internal static class WhisperNetWorkerProgram
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private const string ResponseBeginMarker = "__TRANSCRIPTLAB_WHISPERNET_RESPONSE_BEGIN__";
+    private const string ResponseEndMarker = "__TRANSCRIPTLAB_WHISPERNET_RESPONSE_END__";
 
     public static async Task<int> RunAsync()
     {
@@ -24,7 +26,7 @@ internal static class WhisperNetWorkerProgram
             var response = await WhisperNetWorkerProcessor.ProcessAsync(request);
 
             await using var output = Console.OpenStandardOutput();
-            await JsonSerializer.SerializeAsync(output, response, JsonOptions);
+            await WriteResponseAsync(output, response);
             await output.FlushAsync();
             return 0;
         }
@@ -33,6 +35,14 @@ internal static class WhisperNetWorkerProgram
             await Console.Error.WriteLineAsync(ex.Message);
             return 1;
         }
+    }
+
+    private static async Task WriteResponseAsync(Stream output, WhisperNetWorkerResponse response)
+    {
+        var responseBytes = JsonSerializer.SerializeToUtf8Bytes(response, JsonOptions);
+        await output.WriteAsync(System.Text.Encoding.UTF8.GetBytes(ResponseBeginMarker + Environment.NewLine));
+        await output.WriteAsync(responseBytes);
+        await output.WriteAsync(System.Text.Encoding.UTF8.GetBytes(Environment.NewLine + ResponseEndMarker + Environment.NewLine));
     }
 }
 

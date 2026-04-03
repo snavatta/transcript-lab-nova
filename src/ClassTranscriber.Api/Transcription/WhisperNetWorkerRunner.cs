@@ -11,6 +11,8 @@ public interface IWhisperNetWorkerRunner
 public sealed class WhisperNetWorkerRunner : IWhisperNetWorkerRunner
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web);
+    private const string ResponseBeginMarker = "__TRANSCRIPTLAB_WHISPERNET_RESPONSE_BEGIN__";
+    private const string ResponseEndMarker = "__TRANSCRIPTLAB_WHISPERNET_RESPONSE_END__";
     private readonly ILogger<WhisperNetWorkerRunner> _logger;
 
     public WhisperNetWorkerRunner(ILogger<WhisperNetWorkerRunner> logger)
@@ -70,7 +72,8 @@ public sealed class WhisperNetWorkerRunner : IWhisperNetWorkerRunner
         if (string.IsNullOrWhiteSpace(stdout))
             throw new InvalidOperationException("Whisper.net worker returned no output.");
 
-        var response = JsonSerializer.Deserialize<WhisperNetWorkerResponse>(stdout, JsonOptions);
+        var responsePayload = ExtractResponsePayload(stdout);
+        var response = JsonSerializer.Deserialize<WhisperNetWorkerResponse>(responsePayload, JsonOptions);
         if (response is null)
             throw new InvalidOperationException("Failed to parse Whisper.net worker output.");
 
@@ -112,5 +115,24 @@ public sealed class WhisperNetWorkerRunner : IWhisperNetWorkerRunner
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+    }
+
+    private static string ExtractResponsePayload(string stdout)
+    {
+        var trimmed = stdout.Trim();
+        var startIndex = trimmed.IndexOf(ResponseBeginMarker, StringComparison.Ordinal);
+        if (startIndex < 0)
+            return trimmed;
+
+        startIndex += ResponseBeginMarker.Length;
+        var endIndex = trimmed.IndexOf(ResponseEndMarker, startIndex, StringComparison.Ordinal);
+        if (endIndex < 0)
+            throw new InvalidOperationException("Whisper.net worker output ended before the response framing marker.");
+
+        var payload = trimmed[startIndex..endIndex].Trim();
+        if (string.IsNullOrWhiteSpace(payload))
+            throw new InvalidOperationException("Whisper.net worker returned an empty framed response.");
+
+        return payload;
     }
 }
