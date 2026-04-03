@@ -39,7 +39,7 @@ RUN apt-get update \
 
 WORKDIR /app
 COPY --from=aspnet-runtime /usr/share/dotnet /usr/share/dotnet
-COPY --from=aspnet-runtime /usr/bin/dotnet /usr/bin/dotnet
+RUN ln -sf /usr/share/dotnet/dotnet /usr/bin/dotnet
 COPY --from=backend-build /app/publish ./
 COPY --from=frontend-build /app/frontend/dist ./wwwroot/
 
