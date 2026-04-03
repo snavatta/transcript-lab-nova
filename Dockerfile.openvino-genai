@@ -30,19 +30,10 @@ FROM docker.io/openvino/ubuntu24_runtime:2025.4.1 AS runtime
 USER root
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        software-properties-common \
+        clinfo \
         ffmpeg \
         python3 \
         python3-venv \
-    && add-apt-repository -y ppa:kobuk-team/intel-graphics \
-    && apt-get update \
-    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-        clinfo \
-        intel-gsc \
-        intel-metrics-discovery \
-        intel-opencl-icd \
-        libze-intel-gpu1 \
-        libze1 \
     && rm -rf /var/lib/apt/lists/*
 
 RUN python3 -m venv /opt/openvino-genai-venv \
