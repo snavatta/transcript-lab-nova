@@ -39,7 +39,6 @@ jobs:
 
   backend:
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('src/**/*.csproj') != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-dotnet@v4
@@ -57,7 +56,6 @@ jobs:
 
   frontend:
     runs-on: ubuntu-latest
-    if: ${{ hashFiles('src/frontend/package.json', 'src/frontend/package-lock.json') != '' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
