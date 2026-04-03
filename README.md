@@ -85,7 +85,7 @@ dotnet run
 
 The API runs at `http://localhost:5000`. Swagger UI is available at `/swagger` in development.
 In local development, SQLite and all runtime artifacts are stored under the repo-root `data/` directory rather than under `src/ClassTranscriber.Api/`.
-When a Whisper model is selected for the first time, the backend can download the missing `ggml-*.bin` file into the configured `models/` directory automatically.
+When a WhisperNet model is selected for the first time, the backend can download the missing `ggml-*.bin` file into the configured `models/` directory automatically.
 The default upload request limit is 1 GiB. Override it with `Uploads__MaxRequestBodySizeBytes` if you need a different ceiling.
 
 ### Data Storage
@@ -104,10 +104,6 @@ The app intentionally keeps the database and filesystem artifacts under the same
 ### Transcription Engines
 
 The backend supports multiple transcription engines. Use `GET /api/settings/options` to query the currently available engines and their models at runtime.
-
-#### Whisper (default)
-
-Uses `whisper-cli` (whisper.cpp). Models are auto-downloaded on first use. No extra setup needed beyond having `whisper-cli` on `$PATH`.
 
 #### SherpaOnnx
 
@@ -174,7 +170,7 @@ Configuration in `appsettings.json`:
 
 #### WhisperNet (CPU)
 
-Uses the [Whisper.net](https://github.com/sandrohanea/whisper.net) managed library with the `Whisper.net.Runtime` (CPU) native backend through an isolated helper worker process. Models are the same ggml files used by the Whisper CLI engine and are auto-downloaded on first use.
+Uses the [Whisper.net](https://github.com/sandrohanea/whisper.net) managed library with the `Whisper.net.Runtime` (CPU) native backend through an isolated helper worker process. Models use shared `ggml-*.bin` assets and are auto-downloaded on first use.
 
 No extra setup needed. The NuGet packages are included in the project.
 
@@ -188,7 +184,7 @@ Uses the [Whisper.net](https://github.com/sandrohanea/whisper.net) managed libra
 - CUDA runtime/driver libraries visible to the app
 - For Docker: NVIDIA Container Toolkit and GPU device exposure to the container
 
-Models are the same ggml files used by the Whisper CLI engine and are auto-downloaded on first use. The backend probes for CUDA runtime libraries before each job and returns a clear failure if the host/container cannot load them.
+Models use shared `ggml-*.bin` assets and are auto-downloaded on first use. The backend probes for CUDA runtime libraries before each job and returns a clear failure if the host/container cannot load them.
 
 #### WhisperNetOpenVino (Intel GPU)
 
@@ -198,7 +194,7 @@ Uses the [Whisper.net](https://github.com/sandrohanea/whisper.net) managed libra
 
 - [OpenVino Toolkit (>= 2024.4)](https://github.com/openvinotoolkit/openvino)
 
-Models are the same ggml files used by the Whisper CLI engine and are auto-downloaded on first use. The backend probes for the OpenVino runtime before each job and returns a clear failure if the host cannot load the required libraries.
+Models use shared `ggml-*.bin` assets and are auto-downloaded on first use. The backend probes for the OpenVino runtime before each job and returns a clear failure if the host cannot load the required libraries.
 
 Configuration for all WhisperNet engines in `appsettings.json`:
 ```json
@@ -258,7 +254,19 @@ To try Intel OpenVINO inside Docker, use the optional override:
 docker compose -f docker-compose.yml -f docker-compose.openvino.yml up --build
 ```
 
-The OpenVINO override switches the build to `Dockerfile.openvino`, exposes `/dev/dri`, and sets `Transcription__WhisperNet__OpenVinoDevice=GPU`.
+The OpenVINO override switches the build to `Dockerfile.openvino`, exposes `/dev/dri`, and sets `Transcription__WhisperNet__OpenVinoDevice=GPU` by default. The OpenVINO image is intentionally pinned to the 2024.4 runtime ABI because the current Whisper.net OpenVINO native package expects `libopenvino.so.2440`.
+
+For Intel Arc hosts, `/dev/dri` is the device mapping you want. It exposes both the `card*` and `renderD*` nodes that OpenVINO uses. If the machine has both an Intel iGPU and an Arc dGPU, OpenVINO may enumerate the Arc card as `GPU.1` instead of `GPU`. In that case, start the stack like this:
+
+```bash
+OPENVINO_DEVICE=GPU.1 docker compose -f docker-compose.yml -f docker-compose.openvino.yml up --build
+```
+
+To inspect the host DRM nodes:
+
+```bash
+ls -l /dev/dri
+```
 
 ### CasaOS
 
@@ -287,6 +295,8 @@ devices:
 environment:
   Transcription__WhisperNet__OpenVinoDevice: GPU
 ```
+
+If the Arc card is the second OpenVINO GPU device on that host, use `GPU.1` instead.
 
 For CUDA on CasaOS, the host still needs NVIDIA Container Toolkit and GPU runtime support.
 

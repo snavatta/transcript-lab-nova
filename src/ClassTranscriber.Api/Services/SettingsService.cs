@@ -1,5 +1,6 @@
 using ClassTranscriber.Api.Contracts;
 using ClassTranscriber.Api.Persistence;
+using ClassTranscriber.Api.Transcription;
 using Microsoft.EntityFrameworkCore;
 
 namespace ClassTranscriber.Api.Services;
@@ -7,18 +8,20 @@ namespace ClassTranscriber.Api.Services;
 public class SettingsService : ISettingsService
 {
     private readonly AppDbContext _db;
+    private readonly ITranscriptionEngineRegistry _engineRegistry;
     private readonly ILogger<SettingsService> _logger;
 
-    public SettingsService(AppDbContext db, ILogger<SettingsService> logger)
+    public SettingsService(AppDbContext db, ITranscriptionEngineRegistry engineRegistry, ILogger<SettingsService> logger)
     {
         _db = db;
+        _engineRegistry = engineRegistry;
         _logger = logger;
     }
 
     public async Task<GlobalSettingsDto> GetAsync(CancellationToken ct = default)
     {
         var settings = await _db.GlobalSettings.SingleAsync(ct);
-        return MapToDto(settings);
+        return MapToDto(settings, _engineRegistry);
     }
 
     public async Task<GlobalSettingsDto> UpdateAsync(UpdateGlobalSettingsRequest request, CancellationToken ct = default)
@@ -36,17 +39,27 @@ public class SettingsService : ISettingsService
         await _db.SaveChangesAsync(ct);
 
         _logger.LogInformation("Updated global settings");
-        return MapToDto(settings);
+        return MapToDto(settings, _engineRegistry);
     }
 
-    private static GlobalSettingsDto MapToDto(Domain.GlobalSettings settings) => new()
+    private static GlobalSettingsDto MapToDto(Domain.GlobalSettings settings, ITranscriptionEngineRegistry engineRegistry)
     {
-        DefaultEngine = settings.DefaultEngine,
-        DefaultModel = settings.DefaultModel,
-        DefaultLanguageMode = settings.DefaultLanguageMode,
-        DefaultLanguageCode = settings.DefaultLanguageCode,
-        DefaultAudioNormalizationEnabled = settings.DefaultAudioNormalizationEnabled,
-        DefaultDiarizationEnabled = settings.DefaultDiarizationEnabled,
-        DefaultTranscriptViewMode = settings.DefaultTranscriptViewMode,
-    };
+        var engine = TranscriptionSettingsDefaults.ResolveSupportedEngine(engineRegistry, settings.DefaultEngine);
+        var model = TranscriptionSettingsDefaults.ResolveSupportedModel(engineRegistry, engine, settings.DefaultModel);
+        var (languageMode, languageCode) = TranscriptionSettingsDefaults.ResolveSupportedLanguage(
+            engine,
+            settings.DefaultLanguageMode,
+            settings.DefaultLanguageCode);
+
+        return new GlobalSettingsDto
+        {
+            DefaultEngine = engine,
+            DefaultModel = model,
+            DefaultLanguageMode = languageMode,
+            DefaultLanguageCode = languageCode,
+            DefaultAudioNormalizationEnabled = settings.DefaultAudioNormalizationEnabled,
+            DefaultDiarizationEnabled = settings.DefaultDiarizationEnabled,
+            DefaultTranscriptViewMode = settings.DefaultTranscriptViewMode,
+        };
+    }
 }

@@ -2,7 +2,7 @@ name: transcriptlab-nova
 
 services:
   transcriptlab:
-    image: ghcr.io/snavatta/transcriptlab-nova-cpu:latest
+    image: ghcr.io/snavatta/transcriptlab-nova-openvino:latest
     container_name: transcriptlab
     restart: unless-stopped
     ports:
@@ -11,8 +11,12 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       Storage__BasePath: /data
       ConnectionStrings__DefaultConnection: Data Source=/data/transcriptlab.db
+      Transcription__WhisperNet__OpenVinoDevice: GPU
     volumes:
       - /DATA/AppData/$$AppID/data:/data
+    devices:
+      # Expose the full Intel DRM stack so OpenVINO can reach renderD* and card* nodes.
+      - /dev/dri:/dev/dri   
 
 x-casaos:
   architectures:

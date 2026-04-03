@@ -7,6 +7,7 @@ public sealed class WhisperNetOptions
 {
     public string ModelsPath { get; set; } = "/data/models";
     public bool AutoDownloadModels { get; set; } = true;
+    public string ModelDownloadBaseUrl { get; set; } = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
     public string WorkerPath { get; set; } = "ClassTranscriber.WhisperNet.Worker.dll";
     public string DotNetHostPath { get; set; } = "dotnet";
     public string OpenVinoDevice { get; set; } = "GPU";
@@ -50,6 +51,9 @@ public abstract class WhisperNetTranscriptionEngineBase : IRegisteredTranscripti
 
         return GetAdditionalAvailabilityError();
     }
+
+    public string? GetProbeError()
+        => GetAvailabilityError() ?? GetExecutionPreflightError();
 
     public async Task<TranscriptionResult> TranscribeAsync(string audioPath, ProjectSettings settings, CancellationToken ct = default)
     {

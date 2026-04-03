@@ -278,6 +278,8 @@ public abstract class SherpaOnnxTranscriptionEngineBase<TOptions> : IRegisteredT
             : $"{EngineId} is unavailable because no valid model assets were found under {modelsRoot}.";
     }
 
+    public string? GetProbeError() => GetAvailabilityError();
+
     public async Task<TranscriptionResult> TranscribeAsync(string audioPath, ProjectSettings settings, CancellationToken ct = default)
     {
         var availabilityError = GetAvailabilityError();

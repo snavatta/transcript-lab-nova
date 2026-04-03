@@ -52,7 +52,7 @@ public class Project
 
 public class ProjectSettings
 {
-    public string Engine { get; set; } = "Whisper";
+    public string Engine { get; set; } = "WhisperNet";
     public string Model { get; set; } = "small";
     public string LanguageMode { get; set; } = "Auto";
     public string? LanguageCode { get; set; }
@@ -78,7 +78,7 @@ public class Transcript
 public class GlobalSettings
 {
     public int Id { get; set; } = 1;
-    public string DefaultEngine { get; set; } = "Whisper";
+    public string DefaultEngine { get; set; } = "WhisperNet";
     public string DefaultModel { get; set; } = "small";
     public string DefaultLanguageMode { get; set; } = "Auto";
     public string? DefaultLanguageCode { get; set; }

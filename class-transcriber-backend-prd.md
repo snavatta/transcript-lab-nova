@@ -330,7 +330,7 @@ Note for MVP:
 - `Timestamped`
 
 ## Suggested engine enum for MVP
-- `Whisper`
+- `WhisperNet`
 
 Current backend extension points may additionally expose:
 - `SherpaOnnx`
@@ -385,7 +385,7 @@ Recommended folders:
 - generated exports may go under `exports/`
 - temporary processing artifacts go under `temp/`
 - transcription model files may live under `models/` if needed
-- missing Whisper model files may be auto-downloaded into `models/` on first use when runtime configuration allows it
+- missing ggml WhisperNet model files may be auto-downloaded into `models/` on first use when runtime configuration allows it
 
 ### Important storage rule
 The backend must not rely on database blobs for large media files.
@@ -493,8 +493,8 @@ Required method responsibilities:
 
 ## 13.2 MVP engine implementation
 Default implementation should target:
-- Whisper backend
-- likely via `whisper.cpp` integration from .NET
+- WhisperNet CPU backend
+- likely via the Whisper.net helper-worker integration from .NET
 - missing local model files should be surfaced clearly and may be fetched on demand into local storage when auto-download is enabled
 
 ## 13.3 Transcription result contract
@@ -1067,7 +1067,7 @@ Includes summary fields plus:
 6. Queue state transitions
 7. Background worker
 8. Media preprocessing
-9. Whisper transcription integration
+9. WhisperNet transcription integration
 10. Transcript retrieval
 11. Media streaming endpoint
 12. Export generation

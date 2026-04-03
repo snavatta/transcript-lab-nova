@@ -91,7 +91,7 @@ namespace ClassTranscriber.Api.Persistence.Migrations
                             Id = 1,
                             DefaultAudioNormalizationEnabled = true,
                             DefaultDiarizationEnabled = false,
-                            DefaultEngine = "Whisper",
+                            DefaultEngine = "WhisperNet",
                             DefaultLanguageMode = "Auto",
                             DefaultModel = "small",
                             DefaultTranscriptViewMode = "Readable"

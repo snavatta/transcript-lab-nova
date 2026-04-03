@@ -1,5 +1,4 @@
 const ENGINE_MODEL_OPTIONS = {
-  Whisper: ['tiny', 'base', 'small', 'medium', 'large'],
   SherpaOnnx: ['small', 'medium'],
   SherpaOnnxSenseVoice: ['small'],
   WhisperNet: ['tiny', 'base', 'small', 'medium', 'large'],
@@ -10,7 +9,7 @@ const ENGINE_MODEL_OPTIONS = {
 export const TRANSCRIPTION_ENGINES = Object.keys(ENGINE_MODEL_OPTIONS) as Array<keyof typeof ENGINE_MODEL_OPTIONS>;
 
 export function getModelsForEngine(engine: string): readonly string[] {
-  return ENGINE_MODEL_OPTIONS[engine as keyof typeof ENGINE_MODEL_OPTIONS] ?? ENGINE_MODEL_OPTIONS.Whisper;
+  return ENGINE_MODEL_OPTIONS[engine as keyof typeof ENGINE_MODEL_OPTIONS] ?? ENGINE_MODEL_OPTIONS.WhisperNet;
 }
 
 export function normalizeModelForEngine(engine: string, model: string): string {

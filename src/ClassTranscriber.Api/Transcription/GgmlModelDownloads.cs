@@ -7,12 +7,12 @@ public static class GgmlModelDownloads
     public static string GetModelFileName(string model)
     {
         if (string.IsNullOrWhiteSpace(model))
-            throw new ArgumentException("Whisper model is required.", nameof(model));
+            throw new ArgumentException("Model name is required.", nameof(model));
 
         foreach (var ch in model)
         {
             if (!char.IsLetterOrDigit(ch) && ch is not '-' and not '_' and not '.')
-                throw new InvalidOperationException($"Invalid Whisper model name '{model}'.");
+                throw new InvalidOperationException($"Invalid ggml model name '{model}'.");
         }
 
         return $"ggml-{model}.bin";
@@ -38,7 +38,7 @@ public static class GgmlModelDownloads
         var tempPath = $"{destinationPath}.download";
 
         logger.LogInformation(
-            "Whisper model {Model} is missing. Downloading from {DownloadUrl} to {DestinationPath}",
+            "ggml model {Model} is missing. Downloading from {DownloadUrl} to {DestinationPath}",
             model,
             downloadUrl,
             destinationPath);
@@ -61,12 +61,12 @@ public static class GgmlModelDownloads
                 destination,
                 response.Content.Headers.ContentLength,
                 logger,
-                $"Whisper model {model}",
+                $"ggml model {model}",
                 ct);
             await destination.FlushAsync(ct);
 
             File.Move(tempPath, destinationPath, overwrite: true);
-            logger.LogInformation("Downloaded Whisper model {Model} to {DestinationPath}", model, destinationPath);
+            logger.LogInformation("Downloaded ggml model {Model} to {DestinationPath}", model, destinationPath);
         }
         catch
         {

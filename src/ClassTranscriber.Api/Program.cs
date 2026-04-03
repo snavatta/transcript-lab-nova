@@ -85,17 +85,6 @@ try
     builder.Services.AddSingleton<IAudioNormalizer, FfmpegAudioNormalizer>();
 
     // Transcription
-    builder.Services.Configure<WhisperOptions>(o =>
-    {
-        o.WhisperCliPath = builder.Configuration["Transcription:WhisperCliPath"] ?? "whisper-cli";
-        o.ModelsPath = builder.Configuration["Transcription:ModelsPath"]
-            ?? Path.Combine(
-                builder.Configuration["Storage:BasePath"] ?? "/data",
-                builder.Configuration["Storage:ModelsPath"] ?? "models");
-        if (bool.TryParse(builder.Configuration["Transcription:AutoDownloadModels"], out var autoDownloadModels))
-            o.AutoDownloadModels = autoDownloadModels;
-        o.ModelDownloadBaseUrl = builder.Configuration["Transcription:ModelDownloadBaseUrl"] ?? o.ModelDownloadBaseUrl;
-    });
     builder.Services.Configure<SherpaOnnxOptions>(o =>
     {
         o.PythonPath = builder.Configuration["Transcription:SherpaOnnx:PythonPath"]
@@ -154,12 +143,14 @@ try
                 ?? builder.Configuration["Transcription:AutoDownloadModels"],
                 out var autoDownload))
             o.AutoDownloadModels = autoDownload;
+        o.ModelDownloadBaseUrl = builder.Configuration["Transcription:WhisperNet:ModelDownloadBaseUrl"]
+            ?? builder.Configuration["Transcription:ModelDownloadBaseUrl"]
+            ?? o.ModelDownloadBaseUrl;
         o.WorkerPath = builder.Configuration["Transcription:WhisperNet:WorkerPath"] ?? o.WorkerPath;
         o.DotNetHostPath = builder.Configuration["Transcription:WhisperNet:DotNetHostPath"] ?? o.DotNetHostPath;
         o.OpenVinoDevice = builder.Configuration["Transcription:WhisperNet:OpenVinoDevice"] ?? o.OpenVinoDevice;
         o.OpenVinoCachePath = builder.Configuration["Transcription:WhisperNet:OpenVinoCachePath"];
     });
-    builder.Services.AddSingleton<IRegisteredTranscriptionEngine, WhisperCliTranscriptionEngine>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, SherpaOnnxTranscriptionEngine>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, SherpaOnnxSenseVoiceTranscriptionEngine>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, WhisperNetCpuTranscriptionEngine>();

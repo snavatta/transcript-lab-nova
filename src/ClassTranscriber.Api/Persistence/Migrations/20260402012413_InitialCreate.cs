@@ -116,7 +116,7 @@ namespace ClassTranscriber.Api.Persistence.Migrations
             migrationBuilder.InsertData(
                 table: "GlobalSettings",
                 columns: new[] { "Id", "DefaultAudioNormalizationEnabled", "DefaultDiarizationEnabled", "DefaultEngine", "DefaultLanguageCode", "DefaultLanguageMode", "DefaultModel", "DefaultTranscriptViewMode" },
-                values: new object[] { 1, true, false, "Whisper", null, "Auto", "small", "Readable" });
+                values: new object[] { 1, true, false, "WhisperNet", null, "Auto", "small", "Readable" });
 
             migrationBuilder.CreateIndex(
                 name: "IX_Projects_FolderId",

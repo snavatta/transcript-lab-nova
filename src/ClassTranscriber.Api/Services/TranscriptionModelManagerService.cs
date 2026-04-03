@@ -18,8 +18,13 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
     private static readonly string[] GgmlModels = ["tiny", "base", "small", "medium", "large"];
     private static readonly string[] SherpaWhisperModels = ["small", "medium"];
     private static readonly string[] SherpaSenseVoiceModels = ["small"];
+    private static readonly HashSet<string> LightweightProbeEngines = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "WhisperNet",
+        "WhisperNetCuda",
+        "WhisperNetOpenVino",
+    };
     private readonly Dictionary<string, IRegisteredTranscriptionEngine> _engines;
-    private readonly WhisperOptions _whisperOptions;
     private readonly WhisperNetOptions _whisperNetOptions;
     private readonly SherpaOnnxOptions _sherpaOnnxOptions;
     private readonly SherpaOnnxSenseVoiceOptions _sherpaOnnxSenseVoiceOptions;
@@ -28,7 +33,6 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
 
     public TranscriptionModelManagerService(
         IEnumerable<IRegisteredTranscriptionEngine> engines,
-        IOptions<WhisperOptions> whisperOptions,
         IOptions<WhisperNetOptions> whisperNetOptions,
         IOptions<SherpaOnnxOptions> sherpaOnnxOptions,
         IOptions<SherpaOnnxSenseVoiceOptions> sherpaOnnxSenseVoiceOptions,
@@ -36,7 +40,6 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
         ILogger<TranscriptionModelManagerService> logger)
     {
         _engines = engines.ToDictionary(engine => engine.EngineId, StringComparer.OrdinalIgnoreCase);
-        _whisperOptions = whisperOptions.Value;
         _whisperNetOptions = whisperNetOptions.Value;
         _sherpaOnnxOptions = sherpaOnnxOptions.Value;
         _sherpaOnnxSenseVoiceOptions = sherpaOnnxSenseVoiceOptions.Value;
@@ -113,13 +116,31 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
 
         if (includeProbe && registration.IsInstalled)
         {
-            var probeResult = await ProbeInstalledModelAsync(registration, ct);
-            probeState = probeResult.State;
-            probeMessage = probeResult.Message;
+            if (!_engines.TryGetValue(registration.Engine, out var engine))
+            {
+                probeState = "Unsupported";
+                probeMessage = $"Engine {registration.Engine} is not registered in this runtime.";
+            }
+            else if (engine.GetProbeError() is { } probeError)
+            {
+                probeState = "Unavailable";
+                probeMessage = probeError;
+            }
+            else if (LightweightProbeEngines.Contains(registration.Engine))
+            {
+                probeState = "Ready";
+                probeMessage = "Model assets are present and runtime preflight passed. Full inference probe is skipped for this engine.";
+            }
+            else
+            {
+                var probeResult = await ProbeInstalledModelAsync(registration, ct);
+                probeState = probeResult.State;
+                probeMessage = probeResult.Message;
+            }
         }
         else if (!registration.IsInstalled && _engines.TryGetValue(registration.Engine, out var engine))
         {
-            var availabilityError = engine.GetAvailabilityError();
+            var availabilityError = engine.GetProbeError();
             if (availabilityError is not null)
             {
                 probeState = "Unavailable";
@@ -204,29 +225,40 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
 
     private IEnumerable<ManagedModelRegistration> GetKnownRegistrations()
     {
-        foreach (var model in GgmlModels)
-            yield return CreateRegistration("Whisper", model);
+        if (_engines.ContainsKey("WhisperNet"))
+        {
+            foreach (var model in GgmlModels)
+                yield return CreateRegistration("WhisperNet", model);
+        }
 
-        foreach (var model in GgmlModels)
-            yield return CreateRegistration("WhisperNet", model);
+        if (_engines.ContainsKey("WhisperNetCuda"))
+        {
+            foreach (var model in GgmlModels)
+                yield return CreateRegistration("WhisperNetCuda", model);
+        }
 
-        foreach (var model in GgmlModels)
-            yield return CreateRegistration("WhisperNetCuda", model);
+        if (_engines.ContainsKey("WhisperNetOpenVino"))
+        {
+            foreach (var model in GgmlModels)
+                yield return CreateRegistration("WhisperNetOpenVino", model);
+        }
 
-        foreach (var model in GgmlModels)
-            yield return CreateRegistration("WhisperNetOpenVino", model);
+        if (_engines.ContainsKey("SherpaOnnx"))
+        {
+            foreach (var model in SherpaWhisperModels)
+                yield return CreateRegistration("SherpaOnnx", model);
+        }
 
-        foreach (var model in SherpaWhisperModels)
-            yield return CreateRegistration("SherpaOnnx", model);
-
-        foreach (var model in SherpaSenseVoiceModels)
-            yield return CreateRegistration("SherpaOnnxSenseVoice", model);
+        if (_engines.ContainsKey("SherpaOnnxSenseVoice"))
+        {
+            foreach (var model in SherpaSenseVoiceModels)
+                yield return CreateRegistration("SherpaOnnxSenseVoice", model);
+        }
     }
 
     private ManagedModelRegistration CreateRegistration(string engine, string model)
         => engine switch
         {
-            "Whisper" => CreateGgmlRegistration(engine, model, _whisperOptions.ModelsPath),
             "WhisperNet" => CreateGgmlRegistration(engine, model, _whisperNetOptions.ModelsPath),
             "WhisperNetCuda" => CreateGgmlRegistration(engine, model, _whisperNetOptions.ModelsPath),
             "WhisperNetOpenVino" => CreateGgmlRegistration(engine, model, _whisperNetOptions.ModelsPath),
@@ -246,7 +278,7 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
             true,
             DownloadAsync: downloadCt => GgmlModelDownloads.DownloadModelAsync(
                 _httpClientFactory,
-                _whisperOptions.ModelDownloadBaseUrl,
+                _whisperNetOptions.ModelDownloadBaseUrl,
                 model,
                 installPath,
                 _logger,

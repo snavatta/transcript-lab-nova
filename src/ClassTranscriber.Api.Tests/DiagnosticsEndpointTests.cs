@@ -14,7 +14,7 @@ public sealed class DiagnosticsEndpointTests : IAsyncLifetime
     {
         _factory = new TestWebApplicationFactory(
             [
-                new NoOpTranscriptionEngine("Whisper", ["small", "base"]),
+                new NoOpTranscriptionEngine("WhisperNet", ["small", "base"]),
                 new NoOpTranscriptionEngine("WhisperNetCuda", ["small"], "CUDA runtime libraries are not available."),
             ]);
         _client = _factory.Client;
@@ -42,7 +42,7 @@ public sealed class DiagnosticsEndpointTests : IAsyncLifetime
         runtime.GetProperty("managedHeapBytes").GetInt64().Should().BeGreaterThanOrEqualTo(0);
 
         var engines = payload.GetProperty("engines").EnumerateArray().ToArray();
-        engines.Should().Contain(engine => engine.GetProperty("engine").GetString() == "Whisper"
+        engines.Should().Contain(engine => engine.GetProperty("engine").GetString() == "WhisperNet"
             && engine.GetProperty("isAvailable").GetBoolean());
         engines.Should().Contain(engine => engine.GetProperty("engine").GetString() == "WhisperNetCuda"
             && !engine.GetProperty("isAvailable").GetBoolean()

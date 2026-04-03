@@ -151,13 +151,19 @@ public class UploadService : IUploadService
     private async Task<ProjectSettingsDto> GetDefaultProjectSettingsAsync(CancellationToken ct)
     {
         var defaults = await _db.GlobalSettings.AsNoTracking().SingleAsync(ct);
+        var engine = TranscriptionSettingsDefaults.ResolveSupportedEngine(_engineRegistry, defaults.DefaultEngine);
+        var model = TranscriptionSettingsDefaults.ResolveSupportedModel(_engineRegistry, engine, defaults.DefaultModel);
+        var (languageMode, languageCode) = TranscriptionSettingsDefaults.ResolveSupportedLanguage(
+            engine,
+            defaults.DefaultLanguageMode,
+            defaults.DefaultLanguageCode);
 
         return new ProjectSettingsDto
         {
-            Engine = defaults.DefaultEngine,
-            Model = defaults.DefaultModel,
-            LanguageMode = defaults.DefaultLanguageMode,
-            LanguageCode = defaults.DefaultLanguageCode,
+            Engine = engine,
+            Model = model,
+            LanguageMode = languageMode,
+            LanguageCode = languageCode,
             AudioNormalizationEnabled = defaults.DefaultAudioNormalizationEnabled,
             DiarizationEnabled = defaults.DefaultDiarizationEnabled,
         };

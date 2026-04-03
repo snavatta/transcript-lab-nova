@@ -206,7 +206,7 @@ public class TranscriptionPipelineTests : IAsyncLifetime
     {
         var folderId = await CreateFolder("Override Test Folder");
 
-        var settings = new { engine = "Whisper", model = "base", languageMode = "Fixed", languageCode = "en", audioNormalizationEnabled = false, diarizationEnabled = false };
+        var settings = new { engine = "WhisperNet", model = "base", languageMode = "Fixed", languageCode = "en", audioNormalizationEnabled = false, diarizationEnabled = false };
         var settingsJson = JsonSerializer.Serialize(settings);
 
         using var content = new MultipartFormDataContent();
@@ -395,7 +395,7 @@ public class TranscriptionPipelineTests : IAsyncLifetime
     {
         var folderId = await CreateFolder("Bad Language Mode Folder");
 
-        var settings = new { engine = "Whisper", model = "small", languageMode = "Unknown", languageCode = (string?)null, audioNormalizationEnabled = true, diarizationEnabled = false };
+        var settings = new { engine = "WhisperNet", model = "small", languageMode = "Unknown", languageCode = (string?)null, audioNormalizationEnabled = true, diarizationEnabled = false };
         var response = await UploadWithSettingsAsync(folderId, settings);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -406,7 +406,7 @@ public class TranscriptionPipelineTests : IAsyncLifetime
     {
         var folderId = await CreateFolder("Missing Language Code Folder");
 
-        var settings = new { engine = "Whisper", model = "small", languageMode = "Fixed", languageCode = (string?)null, audioNormalizationEnabled = true, diarizationEnabled = false };
+        var settings = new { engine = "WhisperNet", model = "small", languageMode = "Fixed", languageCode = (string?)null, audioNormalizationEnabled = true, diarizationEnabled = false };
         var response = await UploadWithSettingsAsync(folderId, settings);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -507,7 +507,7 @@ public class TranscriptionPipelineTests : IAsyncLifetime
         {
             settings = new
             {
-                engine = "Whisper",
+                engine = "WhisperNet",
                 model = "base",
                 languageMode = "Fixed",
                 languageCode = "en",
@@ -522,7 +522,7 @@ public class TranscriptionPipelineTests : IAsyncLifetime
         project.GetProperty("status").GetString().Should().Be("Queued");
 
         var settings = project.GetProperty("settings");
-        settings.GetProperty("engine").GetString().Should().Be("Whisper");
+        settings.GetProperty("engine").GetString().Should().Be("WhisperNet");
         settings.GetProperty("model").GetString().Should().Be("base");
         settings.GetProperty("languageMode").GetString().Should().Be("Fixed");
         settings.GetProperty("languageCode").GetString().Should().Be("en");

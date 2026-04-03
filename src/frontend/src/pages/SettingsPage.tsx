@@ -196,16 +196,13 @@ export default function SettingsPage() {
 
       <Box
         sx={{
-          display: 'grid',
+          display: 'flex',
+          flexDirection: 'column',
           gap: 3,
           alignItems: 'start',
-          gridTemplateColumns: {
-            xs: '1fr',
-            xl: 'minmax(0, 620px) minmax(0, 1fr)',
-          },
         }}
       >
-        <Paper variant="outlined" sx={{ p: 3 }}>
+        <Paper variant="outlined" sx={{ p: 3, width: '100%' }}>
           <Typography variant="subtitle1" gutterBottom fontWeight={600}>
             Default Transcription Settings
           </Typography>
@@ -307,7 +304,7 @@ export default function SettingsPage() {
           </Box>
         </Paper>
 
-        <Paper variant="outlined" sx={{ p: 3, minWidth: 0 }}>
+        <Paper variant="outlined" sx={{ p: 3, minWidth: 0, width: '100%' }}>
           <Stack spacing={1.5} sx={{ mb: 2 }}>
             <Typography variant="subtitle1" fontWeight={600}>
               Model Manager

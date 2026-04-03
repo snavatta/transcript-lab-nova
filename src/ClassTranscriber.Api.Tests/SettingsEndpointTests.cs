@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using ClassTranscriber.Api.Contracts;
 using ClassTranscriber.Api.Transcription;
 using FluentAssertions;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Options;
 
@@ -33,7 +34,7 @@ public class SettingsEndpointTests : IAsyncLifetime
 
         var settings = await response.Content.ReadFromJsonAsync<GlobalSettingsDto>();
         settings.Should().NotBeNull();
-        settings!.DefaultEngine.Should().Be("Whisper");
+        settings!.DefaultEngine.Should().Be("WhisperNet");
         settings.DefaultModel.Should().Be("small");
     }
 
@@ -42,7 +43,7 @@ public class SettingsEndpointTests : IAsyncLifetime
     {
         var update = new
         {
-            defaultEngine = "Whisper",
+            defaultEngine = "WhisperNet",
             defaultModel = "medium",
             defaultLanguageMode = "Fixed",
             defaultLanguageCode = "es",
@@ -110,7 +111,7 @@ public class SettingsEndpointTests : IAsyncLifetime
 
         var options = await response.Content.ReadFromJsonAsync<TranscriptionOptionsDto>();
         options.Should().NotBeNull();
-        options!.Engines.Should().ContainSingle(engine => engine.Engine == "Whisper");
+        options!.Engines.Should().ContainSingle(engine => engine.Engine == "WhisperNet");
         options.Engines.Should().ContainSingle(engine => engine.Engine == "SherpaOnnx");
         options.Engines.Should().ContainSingle(engine => engine.Engine == "SherpaOnnxSenseVoice");
         options.Engines.Should().ContainSingle(engine => engine.Engine == "WhisperNetCuda");
@@ -127,7 +128,7 @@ public class SettingsEndpointTests : IAsyncLifetime
 
         var catalog = await response.Content.ReadFromJsonAsync<TranscriptionModelCatalogDto>();
         catalog.Should().NotBeNull();
-        catalog!.Models.Should().Contain(entry => entry.Engine == "Whisper" && entry.Model == "small");
+        catalog!.Models.Should().Contain(entry => entry.Engine == "WhisperNet" && entry.Model == "small");
         catalog.Models.Should().Contain(entry => entry.Engine == "SherpaOnnx" && entry.Model == "medium");
         catalog.Models.Should().Contain(entry => entry.Engine == "WhisperNetCuda" && entry.Model == "base");
     }
@@ -135,14 +136,14 @@ public class SettingsEndpointTests : IAsyncLifetime
     [Fact]
     public async Task ManageTranscriptionModel_ProbeInstalledModel_ReturnsReady()
     {
-        var whisperOptions = _factory.Services.GetRequiredService<IOptions<WhisperOptions>>().Value;
-        var installPath = GgmlModelDownloads.GetModelPath(whisperOptions.ModelsPath, "small");
+        var whisperNetOptions = _factory.Services.GetRequiredService<IOptions<WhisperNetOptions>>().Value;
+        var installPath = GgmlModelDownloads.GetModelPath(whisperNetOptions.ModelsPath, "small");
         Directory.CreateDirectory(Path.GetDirectoryName(installPath)!);
         await File.WriteAllBytesAsync(installPath, []);
 
         var response = await _client.PostAsJsonAsync("/api/settings/models/manage", new
         {
-            engine = "Whisper",
+            engine = "WhisperNet",
             model = "small",
             action = "Probe",
         });
@@ -158,7 +159,7 @@ public class SettingsEndpointTests : IAsyncLifetime
     {
         var response = await _client.PostAsJsonAsync("/api/settings/models/manage", new
         {
-            engine = "Whisper",
+            engine = "WhisperNet",
             model = "small",
             action = "Probe",
         });
@@ -236,7 +237,7 @@ public class SettingsEndpointTests : IAsyncLifetime
     {
         await using var unavailableFactory = new TestWebApplicationFactory(
         [
-            new NoOpTranscriptionEngine("Whisper", ["tiny", "base", "small"]),
+            new NoOpTranscriptionEngine("SherpaOnnx", ["small", "medium"]),
             new NoOpTranscriptionEngine("WhisperNet", ["tiny", "base"], "worker missing"),
         ]);
 
@@ -245,7 +246,7 @@ public class SettingsEndpointTests : IAsyncLifetime
 
         var options = await response.Content.ReadFromJsonAsync<TranscriptionOptionsDto>();
         options.Should().NotBeNull();
-        options!.Engines.Should().ContainSingle(engine => engine.Engine == "Whisper");
+        options!.Engines.Should().ContainSingle(engine => engine.Engine == "SherpaOnnx");
         options.Engines.Should().NotContain(engine => engine.Engine == "WhisperNet");
     }
 
@@ -254,7 +255,6 @@ public class SettingsEndpointTests : IAsyncLifetime
     {
         await using var unavailableFactory = new TestWebApplicationFactory(
         [
-            new NoOpTranscriptionEngine("Whisper", ["tiny", "base", "small"]),
             new NoOpTranscriptionEngine("WhisperNet", ["tiny", "base"], "worker missing"),
         ]);
 
@@ -270,5 +270,24 @@ public class SettingsEndpointTests : IAsyncLifetime
         });
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task GetSettings_NormalizesLegacyUnsupportedDefaultEngine()
+    {
+        await using var scope = _factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<Persistence.AppDbContext>();
+        var settings = await db.GlobalSettings.SingleAsync();
+        settings.DefaultEngine = "Whisper";
+        settings.DefaultModel = "medium";
+        await db.SaveChangesAsync();
+
+        var response = await _client.GetAsync("/api/settings");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var payload = await response.Content.ReadFromJsonAsync<GlobalSettingsDto>();
+        payload.Should().NotBeNull();
+        payload!.DefaultEngine.Should().Be("WhisperNet");
+        payload.DefaultModel.Should().Be("medium");
     }
 }

@@ -154,7 +154,7 @@ public class TranscriptAndExportEndpointTests : IAsyncLifetime
             TotalSizeBytes = 1024,
             Settings = new ProjectSettings
             {
-                Engine = "Whisper",
+                Engine = "WhisperNet",
                 Model = "small",
                 LanguageMode = "Auto",
                 AudioNormalizationEnabled = true,

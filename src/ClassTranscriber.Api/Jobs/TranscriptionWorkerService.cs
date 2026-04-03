@@ -194,7 +194,7 @@ public class TranscriptionWorkerService : BackgroundService, IActiveJobCancellat
             }
             else
             {
-                // Convert audio to WAV 16kHz mono for Whisper
+                // Convert audio to WAV 16kHz mono for the transcription engines
                 preparedAudioPath = await audioExtractor.ExtractAudioAsync(mediaFullPath, audioOutputPath, jobToken);
             }
             extractStopwatch.Stop();

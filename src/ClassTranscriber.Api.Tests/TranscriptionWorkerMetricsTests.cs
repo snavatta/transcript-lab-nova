@@ -96,7 +96,7 @@ public sealed class TranscriptionWorkerMetricsTests : IAsyncLifetime
                 UpdatedAtUtc = DateTime.UtcNow,
                 Settings = new ProjectSettings
                 {
-                    Engine = "Whisper",
+                    Engine = "WhisperNet",
                     Model = "small",
                     LanguageMode = "Auto",
                     AudioNormalizationEnabled = false,
@@ -144,11 +144,13 @@ public sealed class TranscriptionWorkerMetricsTests : IAsyncLifetime
 
     private sealed class DelayedTranscriptionEngine(int delayMs) : IRegisteredTranscriptionEngine
     {
-        public string EngineId => "Whisper";
+        public string EngineId => "WhisperNet";
 
         public IReadOnlyCollection<string> SupportedModels { get; } = ["small"];
 
         public string? GetAvailabilityError() => null;
+
+        public string? GetProbeError() => null;
 
         public async Task<TranscriptionResult> TranscribeAsync(string audioPath, ProjectSettings settings, CancellationToken ct = default)
         {

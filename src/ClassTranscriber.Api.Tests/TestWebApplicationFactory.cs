@@ -37,7 +37,6 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
     {
         _transcriptionEngines = transcriptionEngines?.ToArray()
             ?? [
-                new NoOpTranscriptionEngine("Whisper", ["tiny", "base", "small", "medium", "large"]),
                 new NoOpTranscriptionEngine("SherpaOnnx", ["small", "medium"]),
                 new NoOpTranscriptionEngine("SherpaOnnxSenseVoice", ["small"]),
                 new NoOpTranscriptionEngine("WhisperNet", ["tiny", "base", "small", "medium", "large"]),
@@ -99,10 +98,6 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
         builder.Services.AddScoped<ITranscriptionModelManagerService, TranscriptionModelManagerService>();
         builder.Services.AddSingleton<IRuntimeMetricsSampler, RuntimeMetricsSampler>();
 
-        builder.Services.Configure<WhisperOptions>(o =>
-        {
-            o.ModelsPath = Path.Combine(_storageBasePath, "models");
-        });
         builder.Services.Configure<WhisperNetOptions>(o =>
         {
             o.ModelsPath = Path.Combine(_storageBasePath, "models");
@@ -247,6 +242,8 @@ public class NoOpTranscriptionEngine(
     public IReadOnlyCollection<string> SupportedModels { get; } = supportedModels;
 
     public string? GetAvailabilityError() => availabilityError;
+
+    public string? GetProbeError() => availabilityError;
 
     public Task<TranscriptionResult> TranscribeAsync(string audioPath, ProjectSettings settings, CancellationToken ct = default)
         => Task.FromResult(new TranscriptionResult(

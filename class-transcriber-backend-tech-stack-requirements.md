@@ -54,8 +54,7 @@
 
 ## Transcription Integration
 - **Pluggable transcription engine abstraction** - Required integration boundary
-- **Whisper-based implementation** - Required MVP engine family
-- Local runtime helpers such as **whisper.cpp CLI** are allowed when kept behind the transcription engine abstraction
+- **WhisperNet-based implementation** - Required default MVP engine family
 - **SherpaOnnx** via the official local **.NET runtime/package** is approved behind the engine abstraction; running it through an isolated helper worker process is allowed when needed for cancellation or runtime isolation
 - **Whisper.net** managed library with **Whisper.net.Runtime** (CPU), **Whisper.net.Runtime.Cuda** (NVIDIA GPU), and **Whisper.net.Runtime.OpenVino** (Intel GPU) runtimes are approved behind the engine abstraction, but CPU, CUDA, and OpenVino execution must run through isolated helper worker processes because Whisper.net runtime loading is process-global
 - Keep engine-specific logic behind a dedicated transcription service and engine interface

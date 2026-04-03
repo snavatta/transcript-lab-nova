@@ -111,7 +111,6 @@ Timestamped
 
 ## TranscriptionEngine
 ```text
-Whisper
 SherpaOnnx
 SherpaOnnxSenseVoice
 WhisperNet
@@ -126,7 +125,7 @@ Implementation note:
 - `WhisperNet` uses the Whisper.net managed library with CPU inference (Whisper.net.Runtime) through an isolated helper worker process so runtime selection is per job rather than process-global.
 - `WhisperNetCuda` uses the Whisper.net managed library with NVIDIA CUDA acceleration through the same isolated helper-worker model. Current backend implementation targets the stable `Whisper.net.Runtime.Cuda` runtime. Requires a supported NVIDIA GPU plus CUDA runtime libraries on the host/container.
 - `WhisperNetOpenVino` uses the Whisper.net managed library with Intel OpenVino acceleration (Whisper.net.Runtime.OpenVino) through the same isolated helper-worker model. Requires the OpenVino toolkit (>= 2024.4). Current backend implementation keeps the engine selectable when the helper worker is installed, then performs a runtime probe before each job and fails with a clear error if the host cannot load the required OpenVino libraries.
-- `WhisperNet`, `WhisperNetCuda`, and `WhisperNetOpenVino` use the same ggml model files as the `Whisper` CLI engine and support auto-download.
+- `WhisperNet`, `WhisperNetCuda`, and `WhisperNetOpenVino` use shared ggml model files and support auto-download.
 
 ## ModelName
 Suggested allowed values for MVP:
@@ -138,7 +137,6 @@ small
 
 The backend may allow extension, but frontend should default to the above MVP-safe values.
 Current implementation note:
-- `Whisper` supports `tiny`, `base`, `small`, `medium`, `large`
 - `SherpaOnnx` currently supports `small`, `medium`
 - `SherpaOnnxSenseVoice` currently supports `small`
 - `WhisperNet` supports `tiny`, `base`, `small`, `medium`, `large`
@@ -224,7 +222,7 @@ Validation:
 ### ProjectSettingsDto
 ```json
 {
-  "engine": "Whisper",
+  "engine": "WhisperNet",
   "model": "small",
   "languageMode": "Auto",
   "languageCode": null,
@@ -359,7 +357,7 @@ Fields:
   "failedAtUtc": null,
   "errorMessage": null,
   "settings": {
-    "engine": "Whisper",
+    "engine": "WhisperNet",
     "model": "small",
     "languageMode": "Auto",
     "languageCode": null,
@@ -450,7 +448,7 @@ Notes:
   "durationMs": null,
   "transcriptionElapsedMs": null,
   "totalSizeBytes": 268435456,
-  "engine": "Whisper",
+  "engine": "WhisperNet",
   "model": "small",
   "createdAtUtc": "2026-04-01T18:25:43Z",
   "updatedAtUtc": "2026-04-01T18:25:43Z"
@@ -478,7 +476,7 @@ Fields:
       "durationMs": null,
       "transcriptionElapsedMs": null,
       "totalSizeBytes": 268435456,
-      "engine": "Whisper",
+      "engine": "WhisperNet",
       "model": "small",
       "createdAtUtc": "2026-04-01T18:25:43Z",
       "updatedAtUtc": "2026-04-01T18:25:43Z"
@@ -505,7 +503,7 @@ For MVP, recent completed/failed items are enough.
 ### GlobalSettingsDto
 ```json
 {
-  "defaultEngine": "Whisper",
+  "defaultEngine": "WhisperNet",
   "defaultModel": "small",
   "defaultLanguageMode": "Auto",
   "defaultLanguageCode": null,
@@ -530,7 +528,7 @@ Same shape as `GlobalSettingsDto`.
 ### TranscriptionEngineOptionDto
 ```json
 {
-  "engine": "Whisper",
+  "engine": "WhisperNet",
   "models": ["tiny", "base", "small", "medium", "large"]
 }
 ```
@@ -544,7 +542,7 @@ Fields:
 {
   "engines": [
     {
-      "engine": "Whisper",
+      "engine": "WhisperNet",
       "models": ["tiny", "base", "small", "medium", "large"]
     },
     {
@@ -687,7 +685,7 @@ Conceptual example:
 ```text
 folderId = c0c8f7e8-8730-4ff4-9215-39a71c7df1ae
 autoQueue = true
-settings = {"engine":"Whisper","model":"small","languageMode":"Auto","languageCode":null,"audioNormalizationEnabled":true,"diarizationEnabled":false}
+settings = {"engine":"WhisperNet","model":"small","languageMode":"Auto","languageCode":null,"audioNormalizationEnabled":true,"diarizationEnabled":false}
 files = [file1, file2]
 items = [{"originalFileName":"class01.mp4","projectName":"Biology Class 01"},{"originalFileName":"class02.mp4","projectName":"Biology Class 02"}]
 ```
@@ -999,7 +997,7 @@ Response:
 Request:
 ```json
 {
-  "defaultEngine": "Whisper",
+  "defaultEngine": "WhisperNet",
   "defaultModel": "small",
   "defaultLanguageMode": "Auto",
   "defaultLanguageCode": null,

@@ -19,6 +19,7 @@ public interface IRegisteredTranscriptionEngine : ITranscriptionEngine
     string EngineId { get; }
     IReadOnlyCollection<string> SupportedModels { get; }
     string? GetAvailabilityError();
+    string? GetProbeError();
 }
 
 public interface ITranscriptionEngineRegistry

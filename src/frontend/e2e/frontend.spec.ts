@@ -67,7 +67,7 @@ function createMockState(): MockState {
     folders: [],
     projects: [],
     settings: {
-      defaultEngine: 'Whisper',
+      defaultEngine: 'WhisperNet',
       defaultModel: 'small',
       defaultLanguageMode: 'Auto',
       defaultLanguageCode: null,
@@ -432,7 +432,7 @@ test('supports folder creation, upload review, queue monitoring, project polling
   ]);
 
   await expect(page.getByRole('heading', { name: 'Upload Files' })).toBeVisible();
-  await expect(page.getByRole('combobox').nth(0)).toHaveText('Whisper');
+  await expect(page.getByRole('combobox').nth(0)).toHaveText('WhisperNet.CPU');
   await expect(page.getByRole('combobox').nth(1)).toHaveText('small');
   await page.getByRole('button', { name: 'Upload & Queue' }).click();
 
@@ -442,7 +442,7 @@ test('supports folder creation, upload review, queue monitoring, project polling
   await page.getByRole('tab', { name: /Queued/ }).click();
 
   await expect(page.getByText('Biology Lecture 01')).toBeVisible();
-  await expect(page.getByText('Whisper / small')).toBeVisible();
+  await expect(page.getByText('WhisperNet.CPU / small')).toBeVisible();
 
   await page.getByText('Biology Lecture 01').click();
 
