@@ -69,7 +69,7 @@ internal static class WhisperNetWorkerProcessor
                 CancellationToken.None);
             builder = builder.WithOpenVinoEncoder(
                 openVinoManifestPath,
-                string.IsNullOrWhiteSpace(request.OpenVinoDevice) ? "GPU" : request.OpenVinoDevice,
+                "GPU",
                 request.OpenVinoCachePath);
         }
 

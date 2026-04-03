@@ -35,6 +35,20 @@ USER root
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         ffmpeg \
+        wget \
+        gpg \
+        ca-certificates \
+    && wget -qO - https://repositories.intel.com/gpu/intel-graphics.key \
+        | gpg --yes --dearmor --output /usr/share/keyrings/intel-graphics.gpg \
+    && echo "deb [signed-by=/usr/share/keyrings/intel-graphics.gpg] https://repositories.intel.com/gpu/ubuntu jammy client" \
+        > /etc/apt/sources.list.d/intel-gpu-jammy.list \
+    && apt-get update \
+    && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+        clinfo \
+        ocl-icd-libopencl1 \
+        intel-opencl-icd \
+        libze1 \
+        libze-intel-gpu1 \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
