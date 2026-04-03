@@ -43,8 +43,13 @@ try
         options.SerializerOptions.DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull;
     });
 
+    var sqliteConnectionString = SqliteConnectionStringResolver.Resolve(
+        builder.Configuration.GetConnectionString("DefaultConnection")
+        ?? builder.Configuration["ConnectionStrings:DefaultConnection"]
+        ?? builder.Configuration["ConnectionStrings__DefaultConnection"]);
+
     builder.Services.AddDbContext<AppDbContext>(options =>
-        options.UseSqlite(builder.Configuration.GetConnectionString("DefaultConnection")));
+        options.UseSqlite(sqliteConnectionString));
 
     builder.Services.AddHttpClient("WhisperModelDownloads", client =>
     {
