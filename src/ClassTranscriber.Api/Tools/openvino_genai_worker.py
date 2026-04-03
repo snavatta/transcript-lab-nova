@@ -6,6 +6,7 @@ import traceback
 import wave
 
 import numpy as np
+import openvino as ov
 import openvino_genai as ov_genai
 
 RESPONSE_BEGIN_MARKER = "__TRANSCRIPTLAB_OPENVINO_GENAI_RESPONSE_BEGIN__"
@@ -72,6 +73,62 @@ def build_generation_config(request: dict):
     return config
 
 
+def resolve_device(request: dict) -> str:
+    requested_device = (request.get("device") or "GPU").strip() or "GPU"
+    core = ov.Core()
+    available_devices = [str(device) for device in list(getattr(core, "available_devices", []) or [])]
+    normalized_device = requested_device.upper()
+
+    if normalized_device == "AUTO":
+        gpu_devices = [
+            device for device in available_devices if device.upper() == "GPU" or device.upper().startswith("GPU.")
+        ]
+        resolved_device = "AUTO:GPU,CPU" if gpu_devices else "AUTO:CPU"
+        log(
+            f"OpenVINO GenAI worker resolved requestedDevice={requested_device} to device={resolved_device} "
+            f"availableDevices={available_devices}"
+        )
+        return resolved_device
+
+    if normalized_device == "GPU":
+        gpu_devices = [
+            device for device in available_devices if device.upper() == "GPU" or device.upper().startswith("GPU.")
+        ]
+        if not gpu_devices:
+            raise RuntimeError(
+                f"OpenVINO GenAI worker could not find a usable GPU device for requested device "
+                f"'{requested_device}'. availableDevices={available_devices}"
+            )
+
+        indexed_gpu_devices = [device for device in gpu_devices if "." in device]
+        resolved_device = indexed_gpu_devices[0] if indexed_gpu_devices else gpu_devices[0]
+    else:
+        resolved_device = requested_device
+        if ":" not in resolved_device and "," not in resolved_device and not any(
+            device.upper() == resolved_device.upper() for device in available_devices
+        ):
+            raise RuntimeError(
+                f"OpenVINO GenAI worker could not find requested device '{requested_device}'. "
+                f"availableDevices={available_devices}"
+            )
+
+    if ":" not in resolved_device and "," not in resolved_device:
+        try:
+            full_device_name = core.get_property(resolved_device, "FULL_DEVICE_NAME")
+        except Exception as exc:
+            raise RuntimeError(
+                f"OpenVINO GenAI worker could not initialize resolved device '{resolved_device}' "
+                f"for requested device '{requested_device}'. availableDevices={available_devices}. {exc}"
+            ) from exc
+
+        log(
+            f"OpenVINO GenAI worker resolved requestedDevice={requested_device} to device={resolved_device} "
+            f"fullDeviceName={full_device_name}"
+        )
+
+    return resolved_device
+
+
 def build_segments(chunks, duration_ms: int, plain_text: str, log_segments: bool):
     segments = []
 
@@ -113,7 +170,7 @@ def build_segments(chunks, duration_ms: int, plain_text: str, log_segments: bool
 
 def build_response(request: dict) -> dict:
     samples, duration_ms = load_wave(request["audioPath"])
-    device = (request.get("device") or "GPU").strip() or "GPU"
+    device = resolve_device(request)
     log(
         f"OpenVINO GenAI worker loading modelPath={request['modelPath']} device={device} model={request.get('model')}"
     )

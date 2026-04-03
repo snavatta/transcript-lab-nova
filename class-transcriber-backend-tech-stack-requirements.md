@@ -57,7 +57,7 @@
 - **WhisperNet-based implementation** - Required default MVP engine family
 - **SherpaOnnx** via the official local **.NET runtime/package** is approved behind the engine abstraction; running it through an isolated helper worker process is allowed when needed for cancellation or runtime isolation
 - **Whisper.net** managed library with **Whisper.net.Runtime** (CPU), **Whisper.net.Runtime.Cuda** (NVIDIA GPU), and **Whisper.net.Runtime.OpenVino** (Intel GPU) runtimes are approved behind the engine abstraction, but CPU, CUDA, and OpenVino execution must run through isolated helper worker processes because Whisper.net runtime loading is process-global
-- A separate **Python worker** backed by **openvino**, **openvino-tokenizers**, and **openvino-genai** is approved for a distinct Intel `OpenVinoGenAi` engine when it uses pre-exported public Whisper models and remains behind the same engine abstraction
+- A separate **Python worker** backed by **openvino**, **openvino-tokenizers**, and **openvino-genai** is approved for a distinct Intel `OpenVinoGenAi` engine when it uses pre-exported public Whisper models, remains behind the same engine abstraction, and is packaged in a dedicated Intel OpenVINO runtime image rather than a plain ASP.NET runtime image
 - Keep engine-specific logic behind a dedicated transcription service and engine interface
 - Speaker diarization may be implemented as a lightweight local post-processing step over prepared audio and transcript timestamps rather than a separate heavyweight external service
 

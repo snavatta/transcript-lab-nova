@@ -9,6 +9,36 @@ public interface IOpenVinoGenAiEnvironmentProbe
 
 public sealed class OpenVinoGenAiEnvironmentProbe : IOpenVinoGenAiEnvironmentProbe
 {
+    private const string RuntimeProbeScript = """
+        import sys
+        import openvino as ov
+        import openvino_tokenizers
+        import openvino_genai
+
+        device = (sys.argv[1] if len(sys.argv) > 1 else "GPU").strip() or "GPU"
+        core = ov.Core()
+        available = [str(entry) for entry in list(getattr(core, "available_devices", []) or [])]
+        normalized = device.upper()
+
+        if normalized == "AUTO":
+            raise SystemExit(0)
+
+        if normalized == "GPU":
+            gpu_devices = [entry for entry in available if entry.upper() == "GPU" or entry.upper().startswith("GPU.")]
+            if not gpu_devices:
+                raise RuntimeError(f"Requested device '{device}' is not available. availableDevices={available}")
+
+            indexed_gpu_devices = [entry for entry in gpu_devices if "." in entry]
+            resolved = indexed_gpu_devices[0] if indexed_gpu_devices else gpu_devices[0]
+        else:
+            resolved = device
+            if ":" not in resolved and "," not in resolved and not any(entry.upper() == resolved.upper() for entry in available):
+                raise RuntimeError(f"Requested device '{device}' is not available. availableDevices={available}")
+
+        if ":" not in resolved and "," not in resolved:
+            core.get_property(resolved, "FULL_DEVICE_NAME")
+        """;
+
     private readonly OpenVinoGenAiOptions _options;
     private readonly object _sync = new();
     private string? _cachedError;
@@ -57,7 +87,8 @@ public sealed class OpenVinoGenAiEnvironmentProbe : IOpenVinoGenAiEnvironmentPro
             CreateNoWindow = true,
         };
         startInfo.ArgumentList.Add("-c");
-        startInfo.ArgumentList.Add("import openvino, openvino_tokenizers, openvino_genai");
+        startInfo.ArgumentList.Add(RuntimeProbeScript);
+        startInfo.ArgumentList.Add(string.IsNullOrWhiteSpace(_options.Device) ? "GPU" : _options.Device);
 
         using var process = new Process
         {
@@ -81,13 +112,16 @@ public sealed class OpenVinoGenAiEnvironmentProbe : IOpenVinoGenAiEnvironmentPro
             return "OpenVinoGenAi is unavailable because the Python OpenVINO GenAI runtime probe timed out.";
         }
 
+        var stdout = process.StandardOutput.ReadToEnd().Trim();
+        var stderr = process.StandardError.ReadToEnd().Trim();
+
         if (process.ExitCode == 0)
             return null;
 
-        var stderr = process.StandardError.ReadToEnd().Trim();
-        return string.IsNullOrWhiteSpace(stderr)
+        var failureMessage = string.IsNullOrWhiteSpace(stderr) ? stdout : stderr;
+        return string.IsNullOrWhiteSpace(failureMessage)
             ? "OpenVinoGenAi is unavailable because the Python OpenVINO GenAI runtime probe failed."
-            : $"OpenVinoGenAi is unavailable because the Python OpenVINO GenAI runtime probe failed: {stderr}";
+            : $"OpenVinoGenAi is unavailable because the Python OpenVINO GenAI runtime probe failed: {failureMessage}";
     }
 
     private static string ResolveExecutableOrPath(string executableOrPath)

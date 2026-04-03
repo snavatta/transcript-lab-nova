@@ -21,9 +21,13 @@ COPY src/ClassTranscriber.SherpaOnnx.Worker/ ClassTranscriber.SherpaOnnx.Worker/
 COPY src/ClassTranscriber.WhisperNet.Worker/ ClassTranscriber.WhisperNet.Worker/
 RUN dotnet publish ClassTranscriber.Api/ClassTranscriber.Api.csproj -c Release -o /app/publish
 
-# Stage 3: Runtime
-FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS runtime
+# Stage 3: Harvest the .NET ASP.NET runtime from the official image
+FROM mcr.microsoft.com/dotnet/aspnet:10.0 AS aspnet-runtime
 
+# Stage 4: OpenVINO GenAI runtime
+FROM docker.io/openvino/ubuntu24_runtime:2025.4.1 AS runtime
+
+USER root
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         ffmpeg \
@@ -40,12 +44,15 @@ RUN python3 -m venv /opt/openvino-genai-venv \
         openvino-genai==2025.4.1.0
 
 WORKDIR /app
+COPY --from=aspnet-runtime /usr/share/dotnet /usr/share/dotnet
+RUN ln -sf /usr/share/dotnet/dotnet /usr/bin/dotnet
 COPY --from=backend-build /app/publish ./
 COPY --from=frontend-build /app/frontend/dist ./wwwroot/
 
 ENV ASPNETCORE_URLS=http://+:5000
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV Storage__BasePath=/data
+ENV DOTNET_ROOT=/usr/share/dotnet
 ENV PYTHONUNBUFFERED=1
 ENV PATH=/opt/openvino-genai-venv/bin:${PATH}
 ENV Transcription__OpenVinoGenAi__PythonPath=/opt/openvino-genai-venv/bin/python

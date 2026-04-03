@@ -23,6 +23,7 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
         "WhisperNet",
         "WhisperNetCuda",
         "WhisperNetOpenVino",
+        "OpenVinoGenAi",
     };
     private readonly Dictionary<string, IRegisteredTranscriptionEngine> _engines;
     private readonly WhisperNetOptions _whisperNetOptions;
@@ -119,6 +120,28 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
 
         if (includeProbe && registration.IsInstalled)
         {
+            try
+            {
+                registration.ValidateInstalledAssets?.Invoke();
+            }
+            catch (Exception ex)
+            {
+                probeState = "Failed";
+                probeMessage = ex.Message;
+                return new TranscriptionModelEntryDto
+                {
+                    Engine = registration.Engine,
+                    Model = registration.Model,
+                    IsInstalled = registration.IsInstalled,
+                    InstallPath = registration.InstallPath,
+                    CanDownload = registration.CanDownload && !registration.IsInstalled,
+                    CanRedownload = registration.CanDownload && registration.IsInstalled,
+                    CanProbe = registration.IsInstalled,
+                    ProbeState = probeState,
+                    ProbeMessage = probeMessage,
+                };
+            }
+
             if (!_engines.TryGetValue(registration.Engine, out var engine))
             {
                 probeState = "Unsupported";

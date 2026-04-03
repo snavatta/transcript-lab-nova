@@ -197,6 +197,28 @@ public class SettingsEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task ManageTranscriptionModel_ProbeInstalledOpenVinoGenAiModelWithMissingAssets_ReturnsFailed()
+    {
+        var options = _factory.Services.GetRequiredService<IOptions<OpenVinoGenAiOptions>>().Value;
+        var installPath = OpenVinoGenAiModelDownloads.GetModelDirectory(options.ModelsPath, "base-int8");
+        Directory.CreateDirectory(installPath);
+        await File.WriteAllTextAsync(Path.Combine(installPath, "config.json"), "{}");
+
+        var response = await _client.PostAsJsonAsync("/api/settings/models/manage", new
+        {
+            engine = "OpenVinoGenAi",
+            model = "base-int8",
+            action = "Probe",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var entry = await response.Content.ReadFromJsonAsync<TranscriptionModelEntryDto>();
+        entry.Should().NotBeNull();
+        entry!.ProbeState.Should().Be("Failed");
+        entry.ProbeMessage.Should().Contain("OpenVinoGenAi model asset not found");
+    }
+
+    [Fact]
     public async Task UpdateSettings_AllowsWhisperNetCudaWithSupportedModel()
     {
         var update = new

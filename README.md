@@ -199,7 +199,7 @@ Models use shared `ggml-*.bin` assets and are auto-downloaded on first use. The 
 
 #### OpenVinoGenAi (Intel GPU, separate image)
 
-Uses a separate isolated Python worker backed by `openvino-genai` and pre-exported public Whisper models from the `OpenVINO/*-ov` model catalog. This engine is intentionally separate from `WhisperNetOpenVino`; it targets a newer OpenVINO runtime/toolchain and is published in its own image variant.
+Uses a separate isolated Python worker backed by `openvino-genai` and pre-exported public Whisper models from the `OpenVINO/*-ov` model catalog. This engine is intentionally separate from `WhisperNetOpenVino`; it targets a newer OpenVINO runtime/toolchain, ships in its own image variant, and should run on an Intel OpenVINO runtime base image rather than a plain ASP.NET runtime image.
 
 Recommended starting point for the target Intel Arc A310 4 GB:
 
@@ -210,7 +210,7 @@ Additional curated models:
 - `tiny-int8`
 - `small-fp16`
 
-Models are downloaded into `/data/models/openvino-genai/<model>/` through the settings model manager or automatically on first use when enabled. The engine uses `GPU` by default and can be changed with `Transcription__OpenVinoGenAi__Device`.
+Models are downloaded into `/data/models/openvino-genai/<model>/` through the settings model manager or automatically on first use when enabled. The engine uses `GPU` by default and can be changed with `Transcription__OpenVinoGenAi__Device`. When `GPU` is used, the worker resolves it to the first actually available OpenVINO GPU device and fails early with the detected device list if no usable Intel GPU is visible in the container.
 
 Configuration for all WhisperNet engines in `appsettings.json`:
 ```json
@@ -288,7 +288,7 @@ To try the separate OpenVINO GenAI path, use:
 docker compose -f docker-compose.yml -f docker-compose.openvino-genai.yml up --build
 ```
 
-This override switches the build to `Dockerfile.openvino-genai`, exposes `/dev/dri`, and sets `Transcription__OpenVinoGenAi__Device=GPU` by default. If the Arc card is enumerated as the second OpenVINO GPU device on that host, start it with:
+This override switches the build to `Dockerfile.openvino-genai`, exposes `/dev/dri`, and sets `Transcription__OpenVinoGenAi__Device=GPU` by default. The image is based on the Intel OpenVINO runtime so the GPU plugin and userspace stack are available inside the container. If the Arc card is enumerated as the second OpenVINO GPU device on that host, start it with:
 
 ```bash
 OPENVINO_GENAI_DEVICE=GPU.1 docker compose -f docker-compose.yml -f docker-compose.openvino-genai.yml up --build
