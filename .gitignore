@@ -27,15 +27,6 @@ TestResults/
 appsettings.Development.json
 appsettings.Local.json
 
-# Local runtime data
-data/
-uploads/
-audio/
-exports/
-temp/
-models/
-logs/
-
 # Generated artifacts
 playwright-report/
 test-results/
