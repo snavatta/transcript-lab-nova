@@ -288,7 +288,7 @@ To try the separate OpenVINO GenAI path, use:
 docker compose -f docker-compose.yml -f docker-compose.openvino-genai.yml up --build
 ```
 
-This override switches the build to `Dockerfile.openvino-genai`, exposes `/dev/dri`, and sets `Transcription__OpenVinoGenAi__Device=GPU` by default. The image is based on the Intel OpenVINO runtime so the GPU plugin and userspace stack are available inside the container. If the Arc card is enumerated as the second OpenVINO GPU device on that host, start it with:
+This override switches the build to `Dockerfile.openvino-genai`, exposes `/dev/dri`, and sets `Transcription__OpenVinoGenAi__Device=GPU` by default. The image is based on the Intel OpenVINO runtime and explicitly installs the Intel GPU compute userspace packages (`intel-opencl-icd`, `libze-intel-gpu1`, `libze1`) so the OpenVINO GPU plugin can initialize inside the container. If the Arc card is enumerated as the second OpenVINO GPU device on that host, start it with:
 
 ```bash
 OPENVINO_GENAI_DEVICE=GPU.1 docker compose -f docker-compose.yml -f docker-compose.openvino-genai.yml up --build
