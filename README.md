@@ -187,15 +187,16 @@ Uses the [Whisper.net](https://github.com/sandrohanea/whisper.net) managed libra
 
 Models use shared `ggml-*.bin` assets and are auto-downloaded on first use. The backend probes for CUDA runtime libraries before each job and returns a clear failure if the host/container cannot load them.
 
-#### WhisperNetOpenVino (Intel GPU)
+#### OpenVinoWhisperSidecar (Intel GPU)
 
-Uses the [Whisper.net](https://github.com/sandrohanea/whisper.net) managed library with the `Whisper.net.Runtime.OpenVino` native backend for Intel GPU acceleration. Ideal for the homelab target (Intel Arc A310).
+Uses the supported OpenVINO Whisper sidecar for Intel GPU acceleration. The backend starts a local FastAPI sidecar process that loads OpenVINO Whisper models through the `openvino-genai` Python package and exposes an OpenAI-compatible `/v1/audio/transcriptions` endpoint.
 
 **Prerequisites:**
 
-- [OpenVino Toolkit (>= 2024.4)](https://github.com/openvinotoolkit/openvino)
+- Python 3 with the sidecar requirements from `src/ClassTranscriber.Api/Tools/requirements-openvino-sidecar.txt`
+- Intel GPU runtime support visible to the host or container
 
-Models use shared `ggml-*.bin` assets and are auto-downloaded on first use. The backend probes for the OpenVino runtime before each job and returns a clear failure if the host cannot load the required libraries.
+OpenVINO Whisper models are stored under `data/models/openvino-genai/` and can be downloaded on first use or through `POST /api/settings/models/manage`.
 
 Configuration for all WhisperNet engines in `appsettings.json`:
 ```json
@@ -259,12 +260,14 @@ To try Intel OpenVINO inside Docker, use the optional override:
 docker compose -f docker-compose.yml -f docker-compose.openvino.yml up --build
 ```
 
-The OpenVINO override switches the build to `Dockerfile.openvino`, exposes `/dev/dri`, and sets `Transcription__WhisperNet__OpenVinoDevice=GPU` by default. The OpenVINO image is intentionally pinned to the 2024.4 runtime ABI because the current Whisper.net OpenVINO native package expects `libopenvino.so.2440`.
+The OpenVINO override switches the build to `Dockerfile.openvino`, exposes `/dev/dri`, and sets `Transcription__OpenVinoWhisperSidecar__Device=GPU` by default.
 
-For Intel Arc hosts, `/dev/dri` is the device mapping you want. It exposes both the `card*` and `renderD*` nodes that OpenVINO uses. If the machine has both an Intel iGPU and an Arc dGPU, OpenVINO may enumerate the Arc card as `GPU.1` instead of `GPU`. In that case, start the stack like this:
+For Intel Arc hosts, the OpenVINO image also needs the system Intel OpenCL libraries to take precedence over older Intel compiler libraries inherited from the base image. `Dockerfile.openvino` now enforces that linker order, which was required to restore GPU compilation inside Docker on the Arc A310 used to develop and validate this project.
+
+For Intel Arc hosts, `/dev/dri` is the device mapping you want. It exposes both the `card*` and `renderD*` nodes that OpenVINO uses. In the validated Docker setup for this repo, the Arc A310 is exposed as `GPU` inside the container. If a host enumerates multiple Intel GPUs differently, inspect the sidecar `/devices` output before overriding the device name.
 
 ```bash
-OPENVINO_DEVICE=GPU.1 docker compose -f docker-compose.yml -f docker-compose.openvino.yml up --build
+OPENVINO_DEVICE=GPU docker compose -f docker-compose.yml -f docker-compose.openvino.yml up --build
 ```
 
 To inspect the host DRM nodes:
@@ -298,10 +301,10 @@ For OpenVINO on CasaOS, also add:
 devices:
   - /dev/dri:/dev/dri
 environment:
-  Transcription__WhisperNet__OpenVinoDevice: GPU
+  Transcription__OpenVinoWhisperSidecar__Device: GPU
 ```
 
-If the Arc card is the second OpenVINO GPU device on that host, use `GPU.1` instead.
+If a host reports multiple Intel GPUs in the sidecar `/devices` output, override the device value accordingly.
 
 For CUDA on CasaOS, the host still needs NVIDIA Container Toolkit and GPU runtime support.
 
@@ -344,7 +347,7 @@ docker run --rm -p 5000:5000 -v transcriptlab-data:/data \
 # OpenVINO
 docker run --rm -p 5000:5000 -v transcriptlab-data:/data \
   --device /dev/dri:/dev/dri \
-  -e Transcription__WhisperNet__OpenVinoDevice=GPU \
+  -e Transcription__OpenVinoWhisperSidecar__Device=GPU \
   ghcr.io/<owner>/transcriptlab-nova-openvino:latest
 ```
 

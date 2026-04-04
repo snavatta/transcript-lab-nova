@@ -1,4 +1,5 @@
 using System.Net.Http.Json;
+using System.Text.Json;
 using System.Text.Json.Serialization;
 using Microsoft.Extensions.AI;
 
@@ -71,8 +72,9 @@ internal static class OpenAiAudioTranscriptionHelper
         if (!response.IsSuccessStatusCode)
         {
             var detail = await response.Content.ReadAsStringAsync(cancellationToken);
+            var normalizedDetail = NormalizeErrorDetail(detail);
             throw new InvalidOperationException(
-                $"OpenAI-compatible transcription API returned HTTP {(int)response.StatusCode}: {detail.Trim()}");
+                $"OpenAI-compatible transcription API returned HTTP {(int)response.StatusCode}: {normalizedDetail}");
         }
 
         var parsed = await response.Content.ReadFromJsonAsync<OpenAiVerboseTranscriptionResponse>(cancellationToken);
@@ -87,4 +89,29 @@ internal static class OpenAiAudioTranscriptionHelper
 
         return speechResponse;
     }
+
+    private static string NormalizeErrorDetail(string detail)
+    {
+        var trimmed = detail.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return "The endpoint returned an empty error response.";
+
+        try
+        {
+            var payload = JsonSerializer.Deserialize<OpenAiErrorResponse>(trimmed);
+            if (!string.IsNullOrWhiteSpace(payload?.Detail))
+                return payload.Detail.Trim();
+        }
+        catch (JsonException)
+        {
+            // Fall back to the raw body when the endpoint did not return JSON.
+        }
+
+        return trimmed;
+    }
+}
+
+file sealed class OpenAiErrorResponse
+{
+    [JsonPropertyName("detail")] public string? Detail { get; set; }
 }

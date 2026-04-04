@@ -12,6 +12,8 @@ test-results
 coverage
 .vite
 data
+**/data
+**/data/**
 logs
 models
 uploads

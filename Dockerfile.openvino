@@ -51,6 +51,9 @@ RUN apt-get update \
     && apt-get -f install -y \
     && rm -rf /var/lib/apt/lists/*
 
+RUN printf '# libc default configuration\n/lib/x86_64-linux-gnu\n/usr/lib/x86_64-linux-gnu\n/usr/local/lib\n' > /etc/ld.so.conf.d/libc.conf \
+    && ldconfig
+
 COPY scripts/setup-openvino-whisper-sidecar.sh /tmp/setup-openvino-whisper-sidecar.sh
 COPY src/ClassTranscriber.Api/Tools/requirements-openvino-sidecar.txt /tmp/requirements-openvino-sidecar.txt
 
@@ -69,6 +72,8 @@ COPY --from=aspnet-runtime /usr/share/dotnet /usr/share/dotnet
 RUN ln -sf /usr/share/dotnet/dotnet /usr/bin/dotnet
 COPY --from=backend-build /app/publish ./
 COPY --from=frontend-build /app/frontend/dist ./wwwroot/
+
+RUN mkdir -p /app/data /data/audio /data/exports /data/models /data/temp /data/transcripts /data/uploads
 
 ENV ASPNETCORE_URLS=http://+:5000
 ENV ASPNETCORE_ENVIRONMENT=Production

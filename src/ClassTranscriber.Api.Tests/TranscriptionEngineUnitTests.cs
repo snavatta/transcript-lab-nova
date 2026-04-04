@@ -1,9 +1,12 @@
 using System.Diagnostics;
 using System.Net;
+using System.Net.Http.Json;
 using ClassTranscriber.Api.Contracts;
 using ClassTranscriber.Api.Domain;
 using ClassTranscriber.Api.Transcription;
+using ClassTranscriber.Api.Transcription.SpeechToText;
 using FluentAssertions;
+using Microsoft.Extensions.AI;
 using Microsoft.Extensions.Logging.Abstractions;
 using Microsoft.Extensions.Options;
 using ApiSherpaOnnxBackend = ClassTranscriber.Api.Transcription.SherpaOnnxBackend;
@@ -493,6 +496,34 @@ public class TranscriptionEngineUnitTests
         engine.SupportedModels.Should().Contain(["small", "medium"]);
     }
 
+    [Fact]
+#pragma warning disable MEAI001
+    public async Task OpenVinoSidecarSpeechToTextClient_UnwrapsJsonErrorDetail_OnHttpFailure()
+    {
+        var client = new OpenVinoSidecarSpeechToTextClient(
+            new StubHttpClientFactory(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable)
+            {
+                Content = JsonContent.Create(new
+                {
+                    detail = "Failed to load OpenVINO Whisper model from '/models/base-int8' on requested device 'GPU' (resolved to 'GPU'). Intel GPU model compilation failed. Try device=CPU to confirm the model assets are valid."
+                }),
+            }),
+            new NoOpOpenVinoWhisperSidecarManager(),
+            Options.Create(new OpenVinoWhisperSidecarOptions
+            {
+                Device = "GPU",
+            }));
+
+        Func<Task> act = async () => await client.GetTextAsync(new MemoryStream([1, 2, 3]), new SpeechToTextOptions
+        {
+            ModelId = "base-int8",
+        });
+
+        await act.Should().ThrowAsync<InvalidOperationException>()
+            .WithMessage("*HTTP 503: Failed to load OpenVINO Whisper model*Try device=CPU*");
+    }
+    #pragma warning restore MEAI001
+
     private static string CreateTempWorkerFile(string fileName)
     {
         var path = Path.Combine(CreateTempDirectory(), fileName);
@@ -609,5 +640,14 @@ public class TranscriptionEngineUnitTests
     private sealed class FailingCudaEnvironmentProbe(string message) : ICudaEnvironmentProbe
     {
         public string? GetAvailabilityError() => message;
+    }
+
+    private sealed class NoOpOpenVinoWhisperSidecarManager : IOpenVinoWhisperSidecarManager
+    {
+        public string BaseUrl => "http://127.0.0.1:15432";
+
+        public Task EnsureStartedAsync(CancellationToken ct) => Task.CompletedTask;
+
+        public ValueTask DisposeAsync() => ValueTask.CompletedTask;
     }
 }

@@ -333,6 +333,52 @@ def _is_pipeline_loaded(model_path: str) -> bool:
         return any(k.startswith(f"{model_path}::") for k in _pipeline_cache)
 
 
+def _get_available_devices() -> list[str]:
+    try:
+        core = ov.Core()
+        return [str(d) for d in list(getattr(core, "available_devices", []) or [])]
+    except Exception:
+        return []
+
+
+def _format_model_load_error(exc: Exception, model_path: str, requested_device: str, resolved_device: str) -> str:
+    raw_detail = str(exc).strip()
+    compact_detail = " ".join(line.strip() for line in raw_detail.splitlines() if line.strip())
+    available = _get_available_devices()
+    message = (
+        f"Failed to load OpenVINO Whisper model from '{model_path}' on requested device "
+        f"'{requested_device}' (resolved to '{resolved_device}')."
+    )
+
+    if _is_gpu_program_build_failure(compact_detail):
+        suggestions = [
+            "Intel GPU model compilation failed.",
+            "This usually means the selected GPU/runtime stack cannot compile this model as configured.",
+            "Try device=CPU to confirm the model assets are valid.",
+            "If the host has multiple Intel GPU devices, try an explicit device like GPU.0 or GPU.1.",
+            "If the model is INT8, try an FP16 variant such as base-fp16 or small-fp16.",
+        ]
+        if available:
+            suggestions.append(f"Available devices: {available}.")
+        suggestions.append(f"OpenVINO detail: {compact_detail}")
+        return f"{message} {' '.join(suggestions)}"
+
+    if available:
+        return f"{message} Available devices: {available}. OpenVINO detail: {compact_detail}"
+
+    return f"{message} OpenVINO detail: {compact_detail}"
+
+
+def _is_gpu_program_build_failure(detail: str) -> bool:
+    normalized = detail.lower()
+    return (
+        "programbuilder build failed" in normalized
+        or "program build failed" in normalized
+        or "src/plugins/intel_gpu" in normalized
+        or "[gpu]" in normalized
+    )
+
+
 # ---------------------------------------------------------------------------
 # WAV loading
 # ---------------------------------------------------------------------------
@@ -593,7 +639,7 @@ def health() -> dict:
 def get_devices() -> DevicesResponse:
     try:
         core = ov.Core()
-        available = [str(d) for d in list(getattr(core, "available_devices", []) or [])]
+        available = _get_available_devices()
         entries: list[DeviceEntry] = []
         for device_id in available:
             try:
@@ -721,7 +767,10 @@ def transcribe(req: TranscribeRequest) -> TranscribeResponse:
     try:
         pipeline = _get_or_load_pipeline(req.model_path, resolved_device)
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Failed to load model: {exc}") from exc
+        raise HTTPException(
+            status_code=503,
+            detail=_format_model_load_error(exc, req.model_path, req.device, resolved_device),
+        ) from exc
 
     try:
         samples, duration_ms = _load_wave_path(req.audio_path)
@@ -777,7 +826,10 @@ async def transcribe_openai(
     try:
         pipeline = _get_or_load_pipeline(model_path, resolved_device)
     except Exception as exc:
-        raise HTTPException(status_code=503, detail=f"Failed to load model: {exc}") from exc
+        raise HTTPException(
+            status_code=503,
+            detail=_format_model_load_error(exc, model_path, device, resolved_device),
+        ) from exc
 
     audio_bytes = await file.read()
     try:

@@ -35,6 +35,8 @@ WORKDIR /app
 COPY --from=backend-build /app/publish ./
 COPY --from=frontend-build /app/frontend/dist ./wwwroot/
 
+RUN mkdir -p /app/data /data/audio /data/exports /data/models /data/temp /data/transcripts /data/uploads
+
 ENV ASPNETCORE_URLS=http://+:5000
 ENV ASPNETCORE_ENVIRONMENT=Production
 ENV Storage__BasePath=/data
