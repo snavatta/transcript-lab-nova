@@ -6,7 +6,7 @@ internal static class TranscriptionSettingsDefaults
 {
     public const string PreferredEngine = "WhisperNet";
     public const string PreferredModel = "small";
-    public const string PreferredOpenVinoGenAiModel = "base-int8";
+    public const string PreferredOpenVinoWhisperSidecarModel = "base-int8";
 
     public static string ResolveSupportedEngine(ITranscriptionEngineRegistry engineRegistry, string? requestedEngine)
     {
@@ -55,7 +55,7 @@ internal static class TranscriptionSettingsDefaults
     }
 
     private static string GetPreferredModel(string engine)
-        => string.Equals(engine, "OpenVinoGenAi", StringComparison.OrdinalIgnoreCase)
-            ? PreferredOpenVinoGenAiModel
+        => string.Equals(engine, "OpenVinoWhisperSidecar", StringComparison.OrdinalIgnoreCase)
+            ? PreferredOpenVinoWhisperSidecarModel
             : PreferredModel;
 }

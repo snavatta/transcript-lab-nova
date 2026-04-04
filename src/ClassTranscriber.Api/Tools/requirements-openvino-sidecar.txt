@@ -1,3 +1,5 @@
+openvino
+openvino-tokenizers
 openvino-genai
 fastapi[standard]
 uvicorn[standard]

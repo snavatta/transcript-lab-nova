@@ -185,7 +185,7 @@ Returns OpenVINO available devices:
 
 ### 1.4 Model catalog
 
-The sidecar manages the same catalog as `OpenVinoGenAiModelCatalog` in the C# layer:
+The sidecar manages the same shared OpenVINO Whisper model catalog as the C# layer:
 
 | Name | Repository |
 |---|---|
@@ -269,9 +269,9 @@ public interface IOpenVinoSidecarModelManager
 
 ### 2.4 C# model download delegation
 
-The C# `OpenVinoWhisperSidecarTranscriptionEngine` must **not** use `OpenVinoGenAiModelDownloads` (the C# model download infrastructure). Model download is fully delegated to the sidecar via `IOpenVinoSidecarModelManager`.
+The C# `OpenVinoWhisperSidecarTranscriptionEngine` must **not** use the legacy C# OpenVINO model download path. Model download is fully delegated to the sidecar via `IOpenVinoSidecarModelManager`.
 
-The `TranscriptionModelManagerService.CreateRegistration()` for `OpenVinoWhisperSidecar` must use `IOpenVinoSidecarModelManager.EnsureModelInstalledAsync()` for download actions rather than `OpenVinoGenAiModelDownloads.EnsureModelInstalledAsync()`.
+The `TranscriptionModelManagerService.CreateRegistration()` for `OpenVinoWhisperSidecar` must use `IOpenVinoSidecarModelManager.EnsureModelInstalledAsync()` for download actions rather than the legacy C# OpenVINO model downloader.
 
 ### 2.5 Sidecar process lifecycle
 
@@ -459,7 +459,6 @@ Wherever engine names are rendered in the UI (project details, queue items, sett
 |---|---|
 | `ISpeechToTextClient` is an internal implementation layer | `IRegisteredTranscriptionEngine` remains the public engine contract; MEAi is an internal calling abstraction |
 | Model downloads for `OpenVinoWhisperSidecar` move to the sidecar | Avoids duplicating HuggingFace download logic in C#; sidecar knows its own model directory |
-| `OpenVinoGenAi` engine unchanged | It works correctly; `OpenVinoWhisperSidecar` is the recommended long-lived alternative |
 | `OpenAiCompatible` shares HTTP code with sidecar client | Avoids duplication; both call the same `/v1/audio/transcriptions` endpoint shape |
 | `OnnxWhisper` is a stub only | Full autoregressive Whisper decoding from raw ONNX in .NET is out of scope; placeholder registers the engine name |
 | SSE for model download progress | Streaming gives real-time feedback for large model downloads without blocking the HTTP connection or requiring polling |

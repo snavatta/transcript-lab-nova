@@ -23,12 +23,10 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
     {
         "WhisperNet",
         "WhisperNetCuda",
-        "OpenVinoGenAi",
         "OpenVinoWhisperSidecar",
     };
     private readonly Dictionary<string, IRegisteredTranscriptionEngine> _engines;
     private readonly WhisperNetOptions _whisperNetOptions;
-    private readonly OpenVinoGenAiOptions _openVinoGenAiOptions;
     private readonly OpenVinoWhisperSidecarOptions _openVinoWhisperSidecarOptions;
     private readonly OpenAiCompatibleOptions _openAiCompatibleOptions;
     private readonly SherpaOnnxOptions _sherpaOnnxOptions;
@@ -41,7 +39,6 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
     public TranscriptionModelManagerService(
         IEnumerable<IRegisteredTranscriptionEngine> engines,
         IOptions<WhisperNetOptions> whisperNetOptions,
-        IOptions<OpenVinoGenAiOptions> openVinoGenAiOptions,
         IOptions<OpenVinoWhisperSidecarOptions> openVinoWhisperSidecarOptions,
         IOptions<OpenAiCompatibleOptions> openAiCompatibleOptions,
         IOptions<SherpaOnnxOptions> sherpaOnnxOptions,
@@ -53,7 +50,6 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
     {
         _engines = engines.ToDictionary(engine => engine.EngineId, StringComparer.OrdinalIgnoreCase);
         _whisperNetOptions = whisperNetOptions.Value;
-        _openVinoGenAiOptions = openVinoGenAiOptions.Value;
         _openVinoWhisperSidecarOptions = openVinoWhisperSidecarOptions.Value;
         _openAiCompatibleOptions = openAiCompatibleOptions.Value;
         _sherpaOnnxOptions = sherpaOnnxOptions.Value;
@@ -277,12 +273,6 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
                 yield return CreateRegistration("WhisperNetCuda", model);
         }
 
-        if (_engines.ContainsKey("OpenVinoGenAi"))
-        {
-            foreach (var model in OpenVinoGenAiModelCatalog.SupportedModels)
-                yield return CreateRegistration("OpenVinoGenAi", model);
-        }
-
         if (_engines.ContainsKey("OpenVinoWhisperSidecar"))
         {
             foreach (var model in OpenVinoGenAiModelCatalog.SupportedModels)
@@ -317,7 +307,6 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
         {
             "WhisperNet" => CreateGgmlRegistration(engine, model, _whisperNetOptions.ModelsPath),
             "WhisperNetCuda" => CreateGgmlRegistration(engine, model, _whisperNetOptions.ModelsPath),
-            "OpenVinoGenAi" => CreateOpenVinoGenAiRegistration(engine, model),
             "OpenVinoWhisperSidecar" => CreateOpenVinoWhisperSidecarRegistration(engine, model),
             "OpenAiCompatible" => CreateOpenAiCompatibleRegistration(engine, model),
             "SherpaOnnx" => CreateSherpaRegistration(engine, model, _sherpaOnnxOptions.ModelsPath, _sherpaOnnxOptions.ModelDownloadBaseUrl, SherpaOnnxWhisperModelDownloadCatalog.TryGet),
@@ -376,26 +365,6 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
                 if (!definition.Matches(resolvedDefinition))
                     throw new InvalidOperationException($"{engine} model '{model}' is installed with unexpected assets for this engine.");
             });
-    }
-
-    private ManagedModelRegistration CreateOpenVinoGenAiRegistration(string engine, string model)
-    {
-        var definition = OpenVinoGenAiModelCatalog.GetRequired(model);
-        var installPath = OpenVinoGenAiModelDownloads.GetModelDirectory(_openVinoGenAiOptions.ModelsPath, model);
-        return new ManagedModelRegistration(
-            engine,
-            model,
-            installPath,
-            Directory.Exists(installPath),
-            true,
-            DownloadAsync: downloadCt => OpenVinoGenAiModelDownloads.DownloadModelAsync(
-                _httpClientFactory,
-                _openVinoGenAiOptions.ModelDownloadBaseUrl,
-                definition,
-                installPath,
-                _logger,
-                downloadCt),
-            ValidateInstalledAssets: () => OpenVinoGenAiModelDownloads.ValidateInstalledModel(installPath, definition));
     }
 
     private ManagedModelRegistration CreateOpenVinoWhisperSidecarRegistration(string engine, string model)

@@ -38,6 +38,7 @@ RUN apt-get update \
         python3-venv \
         gpg \
         ca-certificates \
+    && DEBIAN_FRONTEND=noninteractive apt-get remove -y level-zero intel-level-zero-gpu || true \
     && add-apt-repository -y ppa:kobuk-team/intel-graphics \
     && apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -47,17 +48,21 @@ RUN apt-get update \
         intel-metrics-discovery \
         intel-opencl-icd \
         intel-gsc \
+    && apt-get -f install -y \
     && rm -rf /var/lib/apt/lists/*
 
-RUN python3 -m venv /opt/openvino-venv \
-    && /opt/openvino-venv/bin/pip install --no-cache-dir --upgrade pip \
-    && /opt/openvino-venv/bin/pip install --no-cache-dir \
-        numpy \
-        openvino==2026.0.0 \
-        openvino-tokenizers==2026.0.0.0 \
-        openvino-genai==2026.0.0.0 \
-        "fastapi[standard]" \
-        uvicorn
+COPY scripts/setup-openvino-whisper-sidecar.sh /tmp/setup-openvino-whisper-sidecar.sh
+COPY src/ClassTranscriber.Api/Tools/requirements-openvino-sidecar.txt /tmp/requirements-openvino-sidecar.txt
+
+RUN chmod +x /tmp/setup-openvino-whisper-sidecar.sh \
+    && /tmp/setup-openvino-whisper-sidecar.sh \
+        --venv /opt/openvino-venv \
+        --python python3 \
+        --requirements /tmp/requirements-openvino-sidecar.txt \
+        --openvino-version 2026.0.0 \
+        --openvino-tokenizers-version 2026.0.0.0 \
+        --openvino-genai-version 2026.0.0.0 \
+    && rm -f /tmp/setup-openvino-whisper-sidecar.sh /tmp/requirements-openvino-sidecar.txt
 
 WORKDIR /app
 COPY --from=aspnet-runtime /usr/share/dotnet /usr/share/dotnet
@@ -71,8 +76,6 @@ ENV Storage__BasePath=/data
 ENV DOTNET_ROOT=/usr/share/dotnet
 ENV PYTHONUNBUFFERED=1
 ENV PATH=/opt/openvino-venv/bin:${PATH}
-ENV Transcription__OpenVinoGenAi__PythonPath=/opt/openvino-venv/bin/python
-ENV Transcription__OpenVinoGenAi__Device=GPU
 ENV Transcription__OpenVinoWhisperSidecar__PythonPath=/opt/openvino-venv/bin/python
 ENV Transcription__OpenVinoWhisperSidecar__Device=GPU
 

@@ -62,10 +62,6 @@ try
     {
         client.Timeout = Timeout.InfiniteTimeSpan;
     });
-    builder.Services.AddHttpClient("OpenVinoGenAiModelDownloads", client =>
-    {
-        client.Timeout = Timeout.InfiniteTimeSpan;
-    });
     builder.Services.AddHttpClient(OpenVinoWhisperSidecarManager.HttpClientName, client =>
     {
         client.Timeout = Timeout.InfiniteTimeSpan;
@@ -184,33 +180,9 @@ try
         o.WorkerPath = builder.Configuration["Transcription:WhisperNet:WorkerPath"] ?? o.WorkerPath;
         o.DotNetHostPath = builder.Configuration["Transcription:WhisperNet:DotNetHostPath"] ?? o.DotNetHostPath;
     });
-    builder.Services.Configure<OpenVinoGenAiOptions>(o =>
-    {
-        o.ModelsPath = builder.Configuration["Transcription:OpenVinoGenAi:ModelsPath"]
-            ?? Path.Combine(
-                builder.Configuration["Storage:BasePath"] ?? "/data",
-                builder.Configuration["Storage:ModelsPath"] ?? "models",
-                "openvino-genai");
-        if (bool.TryParse(
-                builder.Configuration["Transcription:OpenVinoGenAi:AutoDownloadModels"]
-                ?? builder.Configuration["Transcription:AutoDownloadModels"],
-                out var autoDownload))
-            o.AutoDownloadModels = autoDownload;
-        if (bool.TryParse(
-                builder.Configuration["Transcription:OpenVinoGenAi:LogSegments"]
-                ?? builder.Configuration["Transcription:LogSegments"],
-                out var logSegments))
-            o.LogSegments = logSegments;
-        o.ModelDownloadBaseUrl = builder.Configuration["Transcription:OpenVinoGenAi:ModelDownloadBaseUrl"]
-            ?? o.ModelDownloadBaseUrl;
-        o.PythonPath = builder.Configuration["Transcription:OpenVinoGenAi:PythonPath"] ?? o.PythonPath;
-        o.WorkerScriptPath = builder.Configuration["Transcription:OpenVinoGenAi:WorkerScriptPath"] ?? o.WorkerScriptPath;
-        o.Device = builder.Configuration["Transcription:OpenVinoGenAi:Device"] ?? o.Device;
-    });
     builder.Services.Configure<OpenVinoWhisperSidecarOptions>(o =>
     {
         o.ModelsPath = builder.Configuration["Transcription:OpenVinoWhisperSidecar:ModelsPath"]
-            ?? builder.Configuration["Transcription:OpenVinoGenAi:ModelsPath"]
             ?? Path.Combine(
                 builder.Configuration["Storage:BasePath"] ?? "/data",
                 builder.Configuration["Storage:ModelsPath"] ?? "models",
@@ -226,14 +198,11 @@ try
                 out var logSegments))
             o.LogSegments = logSegments;
         o.ModelDownloadBaseUrl = builder.Configuration["Transcription:OpenVinoWhisperSidecar:ModelDownloadBaseUrl"]
-            ?? builder.Configuration["Transcription:OpenVinoGenAi:ModelDownloadBaseUrl"]
             ?? o.ModelDownloadBaseUrl;
         o.PythonPath = builder.Configuration["Transcription:OpenVinoWhisperSidecar:PythonPath"]
-            ?? builder.Configuration["Transcription:OpenVinoGenAi:PythonPath"]
             ?? o.PythonPath;
         o.ServerScriptPath = builder.Configuration["Transcription:OpenVinoWhisperSidecar:ServerScriptPath"] ?? o.ServerScriptPath;
         o.Device = builder.Configuration["Transcription:OpenVinoWhisperSidecar:Device"]
-            ?? builder.Configuration["Transcription:OpenVinoGenAi:Device"]
             ?? o.Device;
         if (int.TryParse(builder.Configuration["Transcription:OpenVinoWhisperSidecar:Port"], out var port))
             o.Port = port;
@@ -244,7 +213,6 @@ try
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, SherpaOnnxSenseVoiceTranscriptionEngine>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, WhisperNetCpuTranscriptionEngine>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, WhisperNetCudaTranscriptionEngine>();
-    builder.Services.AddSingleton<IRegisteredTranscriptionEngine, OpenVinoGenAiTranscriptionEngine>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, OpenVinoWhisperSidecarTranscriptionEngine>();
     builder.Services.AddSingleton<IOpenVinoWhisperSidecarManager, OpenVinoWhisperSidecarManager>();
     builder.Services.AddSingleton<IOpenVinoWhisperSidecarEnvironmentProbe, OpenVinoWhisperSidecarEnvironmentProbe>();
@@ -265,10 +233,8 @@ try
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", opts.ApiKey);
     });
     builder.Services.AddSingleton<ICudaEnvironmentProbe, CudaEnvironmentProbe>();
-    builder.Services.AddSingleton<IOpenVinoGenAiEnvironmentProbe, OpenVinoGenAiEnvironmentProbe>();
     builder.Services.AddSingleton<ISherpaOnnxWorkerRunner, SherpaOnnxWorkerRunner>();
     builder.Services.AddSingleton<IWhisperNetWorkerRunner, WhisperNetWorkerRunner>();
-    builder.Services.AddSingleton<IOpenVinoGenAiWorkerRunner, OpenVinoGenAiWorkerRunner>();
     builder.Services.AddSingleton<ITranscriptionEngineRegistry, TranscriptionEngineRegistry>();
     builder.Services.AddSingleton<ISpeakerDiarizer, BasicSpeakerDiarizer>();
 
@@ -301,7 +267,6 @@ try
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await db.Database.MigrateAsync();
 
-        var openVinoGenAiProbe = scope.ServiceProvider.GetRequiredService<IOpenVinoGenAiEnvironmentProbe>();
         var openVinoWhisperSidecarProbe = scope.ServiceProvider.GetRequiredService<IOpenVinoWhisperSidecarEnvironmentProbe>();
         var cudaProbe = scope.ServiceProvider.GetRequiredService<ICudaEnvironmentProbe>();
         var startupLogger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
@@ -311,14 +276,6 @@ try
             startupLogger.LogWarning(
                 "{ProbeError} WhisperNetCuda will remain selectable, but jobs will fail until the runtime is installed.",
                 cudaProbeError);
-        }
-
-        var openVinoGenAiProbeError = openVinoGenAiProbe.GetAvailabilityError();
-        if (openVinoGenAiProbeError is not null)
-        {
-            startupLogger.LogWarning(
-                "{ProbeError} OpenVinoGenAi will remain registered, but jobs will fail until the runtime is installed.",
-                openVinoGenAiProbeError);
         }
 
         var openVinoWhisperSidecarProbeError = openVinoWhisperSidecarProbe.GetAvailabilityError();

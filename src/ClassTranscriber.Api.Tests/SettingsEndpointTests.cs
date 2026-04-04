@@ -118,11 +118,9 @@ public class SettingsEndpointTests : IAsyncLifetime
         options.Engines.Should().ContainSingle(engine => engine.Engine == "SherpaOnnx");
         options.Engines.Should().ContainSingle(engine => engine.Engine == "SherpaOnnxSenseVoice");
         options.Engines.Should().ContainSingle(engine => engine.Engine == "WhisperNetCuda");
-        options.Engines.Should().ContainSingle(engine => engine.Engine == "OpenVinoGenAi");
         options.Engines.Single(engine => engine.Engine == "SherpaOnnx").Models.Should().Contain(new[] { "small", "medium" });
         options.Engines.Single(engine => engine.Engine == "SherpaOnnxSenseVoice").Models.Should().ContainSingle().Which.Should().Be("small");
         options.Engines.Single(engine => engine.Engine == "WhisperNetCuda").Models.Should().Contain(new[] { "tiny", "base", "small", "medium", "large" });
-        options.Engines.Single(engine => engine.Engine == "OpenVinoGenAi").Models.Should().Contain(new[] { "base-int8", "small-fp16", "tiny-int8" });
     }
 
     [Fact]
@@ -136,7 +134,6 @@ public class SettingsEndpointTests : IAsyncLifetime
         catalog!.Models.Should().Contain(entry => entry.Engine == "WhisperNet" && entry.Model == "small");
         catalog.Models.Should().Contain(entry => entry.Engine == "SherpaOnnx" && entry.Model == "medium");
         catalog.Models.Should().Contain(entry => entry.Engine == "WhisperNetCuda" && entry.Model == "base");
-        catalog.Models.Should().Contain(entry => entry.Engine == "OpenVinoGenAi" && entry.Model == "base-int8");
     }
 
     [Fact]
@@ -171,54 +168,6 @@ public class SettingsEndpointTests : IAsyncLifetime
         });
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
-    }
-
-    [Fact]
-    public async Task ManageTranscriptionModel_ProbeInstalledOpenVinoGenAiModel_ReturnsReady()
-    {
-        var options = _factory.Services.GetRequiredService<IOptions<OpenVinoGenAiOptions>>().Value;
-        var installPath = OpenVinoGenAiModelDownloads.GetModelDirectory(options.ModelsPath, "base-int8");
-        Directory.CreateDirectory(installPath);
-        foreach (var relativePath in OpenVinoGenAiModelCatalog.GetRequired("base-int8").RequiredFiles)
-        {
-            var fullPath = Path.Combine(installPath, relativePath.Replace('/', Path.DirectorySeparatorChar));
-            Directory.CreateDirectory(Path.GetDirectoryName(fullPath)!);
-            await File.WriteAllTextAsync(fullPath, "x");
-        }
-
-        var response = await _client.PostAsJsonAsync("/api/settings/models/manage", new
-        {
-            engine = "OpenVinoGenAi",
-            model = "base-int8",
-            action = "Probe",
-        });
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var entry = await response.Content.ReadFromJsonAsync<TranscriptionModelEntryDto>();
-        entry.Should().NotBeNull();
-        entry!.ProbeState.Should().Be("Ready");
-    }
-
-    [Fact]
-    public async Task ManageTranscriptionModel_ProbeInstalledOpenVinoGenAiModelWithMissingAssets_ReturnsFailed()
-    {
-        var options = _factory.Services.GetRequiredService<IOptions<OpenVinoGenAiOptions>>().Value;
-        var installPath = OpenVinoGenAiModelDownloads.GetModelDirectory(options.ModelsPath, "base-int8");
-        Directory.CreateDirectory(installPath);
-        await File.WriteAllTextAsync(Path.Combine(installPath, "config.json"), "{}");
-
-        var response = await _client.PostAsJsonAsync("/api/settings/models/manage", new
-        {
-            engine = "OpenVinoGenAi",
-            model = "base-int8",
-            action = "Probe",
-        });
-
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-        var entry = await response.Content.ReadFromJsonAsync<TranscriptionModelEntryDto>();
-        entry.Should().NotBeNull();
-        entry!.ProbeState.Should().Be("Failed");
-        entry.ProbeMessage.Should().Contain("OpenVinoGenAi model asset not found");
     }
 
     [Fact]

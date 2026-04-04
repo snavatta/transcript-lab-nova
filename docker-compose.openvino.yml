@@ -5,5 +5,4 @@ services:
     devices:
       - /dev/dri:/dev/dri
     environment:
-      - Transcription__OpenVinoGenAi__Device=${OPENVINO_DEVICE:-GPU}
       - Transcription__OpenVinoWhisperSidecar__Device=${OPENVINO_DEVICE:-GPU}

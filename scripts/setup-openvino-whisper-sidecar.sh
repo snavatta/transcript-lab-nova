@@ -3,6 +3,9 @@
 #
 # Usage:
 #   ./scripts/setup-openvino-whisper-sidecar.sh [--venv <path>] [--python <path>]
+#       [--requirements <path>] [--include-test-deps]
+#       [--openvino-version <version>] [--openvino-tokenizers-version <version>]
+#       [--openvino-genai-version <version>]
 #
 # Options:
 #   --venv    Path to the Python virtual environment to install into.
@@ -10,6 +13,12 @@
 #             data/venvs/openvino-whisper in the repo root.
 #   --python  Python executable to use when creating a new venv.
 #             Defaults to python3.
+#   --requirements  Requirements file to install from.
+#             Defaults to src/ClassTranscriber.Api/Tools/requirements-openvino-sidecar.txt.
+#   --include-test-deps  Install test-only dependencies from the requirements file.
+#   --openvino-version  Install a pinned openvino package version.
+#   --openvino-tokenizers-version  Install a pinned openvino-tokenizers package version.
+#   --openvino-genai-version  Install a pinned openvino-genai package version.
 #
 # Environment variables:
 #   VIRTUAL_ENV  Honoured automatically if a venv is already activated.
@@ -36,6 +45,11 @@ REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
 
 VENV_PATH=""
 PYTHON_BIN="python3"
+REQUIREMENTS_FILE=""
+INCLUDE_TEST_DEPS=0
+OPENVINO_VERSION=""
+OPENVINO_TOKENIZERS_VERSION=""
+OPENVINO_GENAI_VERSION=""
 
 while [[ $# -gt 0 ]]; do
   case "$1" in
@@ -45,6 +59,26 @@ while [[ $# -gt 0 ]]; do
       ;;
     --python)
       PYTHON_BIN="$2"
+      shift 2
+      ;;
+    --requirements)
+      REQUIREMENTS_FILE="$2"
+      shift 2
+      ;;
+    --include-test-deps)
+      INCLUDE_TEST_DEPS=1
+      shift 1
+      ;;
+    --openvino-version)
+      OPENVINO_VERSION="$2"
+      shift 2
+      ;;
+    --openvino-tokenizers-version)
+      OPENVINO_TOKENIZERS_VERSION="$2"
+      shift 2
+      ;;
+    --openvino-genai-version)
+      OPENVINO_GENAI_VERSION="$2"
       shift 2
       ;;
     *)
@@ -68,6 +102,10 @@ if [[ -z "$VENV_PATH" ]]; then
   fi
 fi
 
+if [[ -z "$REQUIREMENTS_FILE" ]]; then
+  REQUIREMENTS_FILE="${REPO_ROOT}/src/ClassTranscriber.Api/Tools/requirements-openvino-sidecar.txt"
+fi
+
 # Create venv if it does not exist
 if [[ ! -f "${VENV_PATH}/bin/activate" ]]; then
   echo "Creating virtual environment at $VENV_PATH ..."
@@ -77,6 +115,30 @@ fi
 PIP="${VENV_PATH}/bin/pip"
 PYTHON="${VENV_PATH}/bin/python"
 
+declare -a RUNTIME_REQUIREMENTS=()
+
+read_runtime_requirements() {
+  local line
+
+  while IFS= read -r line || [[ -n "$line" ]]; do
+    if [[ "$line" == "# Test dependencies" && "$INCLUDE_TEST_DEPS" -eq 0 ]]; then
+      break
+    fi
+
+    if [[ -z "$line" || "$line" =~ ^# ]]; then
+      continue
+    fi
+
+    case "$line" in
+      openvino|openvino==*|openvino-tokenizers|openvino-tokenizers==*|openvino-genai|openvino-genai==*)
+        continue
+        ;;
+    esac
+
+    RUNTIME_REQUIREMENTS+=("$line")
+  done < "$REQUIREMENTS_FILE"
+}
+
 # ---------------------------------------------------------------------------
 # Upgrade pip
 # ---------------------------------------------------------------------------
@@ -85,38 +147,47 @@ echo "Upgrading pip ..."
 "$PIP" install --upgrade pip --quiet
 
 # ---------------------------------------------------------------------------
-# Install OpenVINO GenAI if not already present
+# Install dependencies
 # ---------------------------------------------------------------------------
 
-echo "Checking for openvino-genai ..."
-if ! "$PYTHON" -c "import openvino_genai" 2>/dev/null; then
-  echo "Installing openvino-genai ..."
-  "$PIP" install openvino-genai
-else
-  OV_VERSION=$("$PYTHON" -c "import openvino_genai; print(getattr(openvino_genai, '__version__', 'unknown'))" 2>/dev/null || echo "unknown")
-  echo "openvino-genai already installed (version: ${OV_VERSION})"
+if [[ ! -f "$REQUIREMENTS_FILE" ]]; then
+  echo "Requirements file not found: ${REQUIREMENTS_FILE}" >&2
+  exit 1
 fi
 
-# ---------------------------------------------------------------------------
-# Install FastAPI and Uvicorn
-# ---------------------------------------------------------------------------
+read_runtime_requirements
 
-echo "Checking for fastapi ..."
-if ! "$PYTHON" -c "import fastapi" 2>/dev/null; then
-  echo "Installing fastapi ..."
-  "$PIP" install "fastapi[standard]"
+declare -a OV_PACKAGES=()
+
+if [[ -n "$OPENVINO_VERSION" ]]; then
+  OV_PACKAGES+=("openvino==${OPENVINO_VERSION}")
 else
-  FA_VERSION=$("$PYTHON" -c "import fastapi; print(fastapi.__version__)" 2>/dev/null || echo "unknown")
-  echo "fastapi already installed (version: ${FA_VERSION})"
+  OV_PACKAGES+=("openvino")
 fi
 
-echo "Checking for uvicorn ..."
-if ! "$PYTHON" -c "import uvicorn" 2>/dev/null; then
-  echo "Installing uvicorn ..."
-  "$PIP" install uvicorn
+if [[ -n "$OPENVINO_TOKENIZERS_VERSION" ]]; then
+  OV_PACKAGES+=("openvino-tokenizers==${OPENVINO_TOKENIZERS_VERSION}")
 else
-  UV_VERSION=$("$PYTHON" -c "import uvicorn; print(uvicorn.__version__)" 2>/dev/null || echo "unknown")
-  echo "uvicorn already installed (version: ${UV_VERSION})"
+  OV_PACKAGES+=("openvino-tokenizers")
+fi
+
+if [[ -n "$OPENVINO_GENAI_VERSION" ]]; then
+  OV_PACKAGES+=("openvino-genai==${OPENVINO_GENAI_VERSION}")
+else
+  OV_PACKAGES+=("openvino-genai")
+fi
+
+echo "Installing OpenVINO packages ..."
+"$PIP" install --no-cache-dir "${OV_PACKAGES[@]}"
+
+if (( ${#RUNTIME_REQUIREMENTS[@]} > 0 )); then
+  echo "Installing sidecar dependencies from ${REQUIREMENTS_FILE} ..."
+  "$PIP" install --no-cache-dir "${RUNTIME_REQUIREMENTS[@]}"
+fi
+
+if [[ "$INCLUDE_TEST_DEPS" -eq 1 ]]; then
+  echo "Installing test dependencies from ${REQUIREMENTS_FILE} ..."
+  "$PIP" install --no-cache-dir -r "$REQUIREMENTS_FILE"
 fi
 
 # ---------------------------------------------------------------------------
@@ -127,7 +198,7 @@ SIDECAR_SCRIPT="${REPO_ROOT}/src/ClassTranscriber.Api/Tools/openvino_whisper_sid
 
 if [[ -f "$SIDECAR_SCRIPT" ]]; then
   echo "Verifying sidecar imports ..."
-  if "$PYTHON" -c "import openvino_genai; import fastapi; import uvicorn; import numpy; print('All imports OK')"; then
+  if "$PYTHON" -c "import openvino; import openvino_tokenizers; import openvino_genai; import fastapi; import uvicorn; import numpy; print('All imports OK')"; then
     echo "Sidecar dependencies verified successfully."
   else
     echo "ERROR: One or more sidecar imports failed. Check the output above." >&2
@@ -146,6 +217,7 @@ echo "Setup complete."
 echo ""
 echo "Python:  ${PYTHON}"
 echo "Venv:    ${VENV_PATH}"
+echo "Requirements: ${REQUIREMENTS_FILE}"
 echo ""
 echo "To run TranscriptLab Nova with this venv, activate it before starting dotnet:"
 echo ""
