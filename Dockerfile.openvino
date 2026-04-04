@@ -38,7 +38,7 @@ RUN apt-get update \
         python3-venv \
         gpg \
         ca-certificates \
-    && DEBIAN_FRONTEND=noninteractive apt-get remove -y level-zero intel-level-zero-gpu || true \
+    && DEBIAN_FRONTEND=noninteractive apt-get remove -y level-zero intel-level-zero-gpu intel-igc-core-2 intel-igc-opencl-2 || true \
     && add-apt-repository -y ppa:kobuk-team/intel-graphics \
     && apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
@@ -73,7 +73,7 @@ RUN ln -sf /usr/share/dotnet/dotnet /usr/bin/dotnet
 COPY --from=backend-build /app/publish ./
 COPY --from=frontend-build /app/frontend/dist ./wwwroot/
 
-RUN mkdir -p /app/data /data/audio /data/exports /data/models /data/temp /data/transcripts /data/uploads
+RUN mkdir -p /app/data /data/audio /data/exports /data/models /data/ov-cache /data/temp /data/transcripts /data/uploads
 
 ENV ASPNETCORE_URLS=http://+:5000
 ENV ASPNETCORE_ENVIRONMENT=Production
@@ -83,6 +83,7 @@ ENV PYTHONUNBUFFERED=1
 ENV PATH=/opt/openvino-venv/bin:${PATH}
 ENV Transcription__OpenVinoWhisperSidecar__PythonPath=/opt/openvino-venv/bin/python
 ENV Transcription__OpenVinoWhisperSidecar__Device=GPU
+ENV Transcription__OpenVinoWhisperSidecar__CacheDir=/data/ov-cache
 
 EXPOSE 5000
 VOLUME /data

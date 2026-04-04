@@ -24,6 +24,12 @@ public sealed class OpenVinoWhisperSidecarOptions
     public string ModelDownloadBaseUrl { get; set; } = "https://huggingface.co";
     public string Device { get; set; } = "GPU";
     public bool LogSegments { get; set; }
+    /// <summary>
+    /// Directory for persisting OpenVINO compiled GPU/CPU kernel cache across restarts.
+    /// Strongly recommended for GPU devices — without this every container start recompiles all kernels.
+    /// Maps to <c>--cache-dir</c> on the sidecar process.
+    /// </summary>
+    public string? CacheDir { get; set; }
 }
 
 // ---------------------------------------------------------------------------
@@ -217,6 +223,16 @@ public sealed class OpenVinoWhisperSidecarManager : IOpenVinoWhisperSidecarManag
         startInfo.ArgumentList.Add(_options.ModelDownloadBaseUrl);
         if (_options.LogSegments)
             startInfo.ArgumentList.Add("--log-segments");
+        if (!string.IsNullOrWhiteSpace(_options.CacheDir))
+        {
+            startInfo.ArgumentList.Add("--cache-dir");
+            startInfo.ArgumentList.Add(_options.CacheDir);
+        }
+        if (!string.IsNullOrWhiteSpace(_options.Device))
+        {
+            startInfo.ArgumentList.Add("--device");
+            startInfo.ArgumentList.Add(_options.Device);
+        }
 
         _process = new Process { StartInfo = startInfo };
 

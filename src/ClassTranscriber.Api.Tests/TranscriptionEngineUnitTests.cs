@@ -522,7 +522,7 @@ public class TranscriptionEngineUnitTests
         await act.Should().ThrowAsync<InvalidOperationException>()
             .WithMessage("*HTTP 503: Failed to load OpenVINO Whisper model*Try device=CPU*");
     }
-    #pragma warning restore MEAI001
+#pragma warning restore MEAI001
 
     private static string CreateTempWorkerFile(string fileName)
     {

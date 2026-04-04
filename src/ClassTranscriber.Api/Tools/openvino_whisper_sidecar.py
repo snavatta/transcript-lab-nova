@@ -40,6 +40,7 @@ from pydantic import BaseModel
 _models_path: str = "./data/models/openvino-genai"
 _model_download_base_url: str = "https://huggingface.co"
 _log_segments_default: bool = False
+_cache_dir: str | None = None  # persistent OpenVINO compiled-kernel cache directory
 
 # pipeline cache: keyed by "{model_path}::{device}"
 _pipeline_cache: dict[str, ov_genai.WhisperPipeline] = {}
@@ -223,7 +224,14 @@ def _resolve_device(requested_device: str) -> str:
 
     if normalized == "AUTO":
         gpu_devices = [d for d in available if d.upper() == "GPU" or d.upper().startswith("GPU.")]
-        resolved = "AUTO:GPU,CPU" if gpu_devices else "AUTO:CPU"
+        if not gpu_devices:
+            raise RuntimeError(
+                f"OpenVINO sidecar: device=AUTO requires at least one GPU but none was detected. "
+                f"availableDevices={available}. "
+                f"Ensure the GPU is passed through to the container (e.g. /dev/dri) "
+                f"and the Intel GPU driver stack is installed."
+            )
+        resolved = "AUTO:GPU,CPU"
         log(
             f"OpenVINO sidecar resolved requestedDevice={requested_device} to device={resolved} "
             f"availableDevices={available}"
@@ -304,10 +312,14 @@ def _load_pipeline_with_retry(model_path: str, device: str, retries: int = 2, de
     OpenVINO wraps the underlying OS broken-pipe signal as a RuntimeError whose message contains
     '[Errno 32] Broken pipe', rather than raising a Python BrokenPipeError directly.
     """
+    pipeline_kwargs: dict = {}
+    if _cache_dir:
+        pipeline_kwargs["CACHE_DIR"] = _cache_dir
+        log(f"OpenVINO sidecar: using kernel cache at {_cache_dir}")
     last_exc: Exception | None = None
     for attempt in range(retries):
         try:
-            return ov_genai.WhisperPipeline(model_path, device)
+            return ov_genai.WhisperPipeline(model_path, device, **pipeline_kwargs)
         except Exception as exc:
             if not _is_broken_pipe_error(exc):
                 raise
@@ -880,13 +892,39 @@ async def transcribe_openai(
 # Startup
 # ---------------------------------------------------------------------------
 
-def _configure(models_path: str, model_download_base_url: str, log_segments: bool) -> None:
-    global _models_path, _model_download_base_url, _log_segments_default
+def _validate_gpu_available(device: str) -> None:
+    """Exit the process with an error if ``device`` requires a GPU but none is detected.
+
+    Called once at startup so the sidecar process fails fast rather than returning errors
+    only at the first transcription request.
+    """
+    normalized = (device.strip() or "GPU").upper()
+    # Only GPU and AUTO require a GPU.  Explicit CPU or fully-qualified AUTO:... strings skip the check.
+    if normalized not in ("GPU", "AUTO"):
+        return
+    available = _get_available_devices()
+    gpu_devices = [d for d in available if d.upper() == "GPU" or d.upper().startswith("GPU.")]
+    if not gpu_devices:
+        log(
+            f"ERROR: OpenVINO sidecar requires a GPU (configured device='{device}') "
+            f"but no GPU was detected. availableDevices={available}. "
+            f"Ensure the GPU device is passed through to the container (e.g. /dev/dri) "
+            f"and the Intel GPU driver stack is installed."
+        )
+        sys.exit(1)
+    log(f"OpenVINO sidecar: GPU detected — {gpu_devices}")
+
+
+def _configure(models_path: str, model_download_base_url: str, log_segments: bool, cache_dir: str | None = None) -> None:
+    global _models_path, _model_download_base_url, _log_segments_default, _cache_dir
     _models_path = models_path
     _model_download_base_url = model_download_base_url.rstrip("/")
     _log_segments_default = log_segments
+    _cache_dir = cache_dir or None
     Path(_models_path).mkdir(parents=True, exist_ok=True)
-    log(f"OpenVINO sidecar: models_path={_models_path} model_download_base_url={_model_download_base_url}")
+    if _cache_dir:
+        Path(_cache_dir).mkdir(parents=True, exist_ok=True)
+    log(f"OpenVINO sidecar: models_path={_models_path} cache_dir={_cache_dir} model_download_base_url={_model_download_base_url}")
 
 
 if __name__ == "__main__":
@@ -906,8 +944,19 @@ if __name__ == "__main__":
         "--log-segments", action="store_true", default=False,
         help="Log each transcript segment to stderr",
     )
+    parser.add_argument(
+        "--cache-dir", default=None,
+        help="Directory for persisting OpenVINO compiled GPU/CPU kernel cache across restarts "
+             "(no default = no disk cache). Strongly recommended for GPU devices.",
+    )
+    parser.add_argument(
+        "--device", default="GPU",
+        help="OpenVINO device to use for transcription (e.g. GPU, CPU, AUTO). "
+             "If GPU or AUTO, the sidecar will exit immediately if no GPU is detected.",
+    )
     args = parser.parse_args()
 
-    _configure(args.models_path, args.model_download_base_url, args.log_segments)
+    _configure(args.models_path, args.model_download_base_url, args.log_segments, args.cache_dir)
+    _validate_gpu_available(args.device)
     log(f"OpenVINO Whisper sidecar starting on {args.host}:{args.port}")
     uvicorn.run(app, host=args.host, port=args.port, log_level="warning")
