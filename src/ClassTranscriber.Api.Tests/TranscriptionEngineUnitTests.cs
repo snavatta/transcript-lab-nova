@@ -24,7 +24,6 @@ public class TranscriptionEngineUnitTests
             Options.Create(new WhisperNetOptions
             {
                 WorkerPath = workerPath,
-                OpenVinoDevice = "GPU",
                 LogSegments = true,
             }),
             runner,
@@ -42,37 +41,6 @@ public class TranscriptionEngineUnitTests
         runner.Requests[0].LanguageMode.Should().Be("Auto");
         runner.Requests[0].LanguageCode.Should().BeNull();
         runner.Requests[0].LogSegments.Should().BeTrue();
-    }
-
-    [Fact]
-    public async Task WhisperNetOpenVinoEngine_UsesOpenVinoWorkerMode_ForFixedLanguage()
-    {
-        var runner = new RecordingWhisperNetWorkerRunner();
-        var workerPath = CreateTempWorkerFile("whisper-openvino.exe");
-        var engine = new WhisperNetOpenVinoTranscriptionEngine(
-            Options.Create(new WhisperNetOptions
-            {
-                WorkerPath = workerPath,
-                OpenVinoDevice = "GPU",
-                OpenVinoCachePath = "cache",
-            }),
-            runner,
-            new AvailableOpenVinoEnvironmentProbe(),
-            NullLogger<WhisperNetOpenVinoTranscriptionEngine>.Instance);
-
-        await engine.TranscribeAsync("/tmp/audio.wav", new ProjectSettings
-        {
-            Engine = "WhisperNetOpenVino",
-            Model = "base",
-            LanguageMode = "Fixed",
-            LanguageCode = "en",
-        });
-
-        runner.Requests.Should().ContainSingle();
-        runner.Requests[0].Mode.Should().Be(WhisperNetWorkerMode.OpenVino);
-        runner.Requests[0].LanguageMode.Should().Be("Fixed");
-        runner.Requests[0].LanguageCode.Should().Be("en");
-        runner.Requests[0].OpenVinoCachePath.Should().NotBeNull();
     }
 
     [Fact]
@@ -146,46 +114,6 @@ public class TranscriptionEngineUnitTests
     }
 
     [Fact]
-    public void WhisperNetOpenVinoEngine_RemainsSelectableEvenWhenProbeFails()
-    {
-        var engine = new WhisperNetOpenVinoTranscriptionEngine(
-            Options.Create(new WhisperNetOptions
-            {
-                WorkerPath = CreateTempWorkerFile("whisper-openvino.exe"),
-            }),
-            new RecordingWhisperNetWorkerRunner(),
-            new FailingOpenVinoEnvironmentProbe("missing openvino"),
-            NullLogger<WhisperNetOpenVinoTranscriptionEngine>.Instance);
-
-        engine.GetAvailabilityError().Should().BeNull();
-    }
-
-    [Fact]
-    public async Task WhisperNetOpenVinoEngine_FailsTranscription_WhenProbeFails()
-    {
-        var runner = new RecordingWhisperNetWorkerRunner();
-        var engine = new WhisperNetOpenVinoTranscriptionEngine(
-            Options.Create(new WhisperNetOptions
-            {
-                WorkerPath = CreateTempWorkerFile("whisper-openvino.exe"),
-            }),
-            runner,
-            new FailingOpenVinoEnvironmentProbe("missing openvino"),
-            NullLogger<WhisperNetOpenVinoTranscriptionEngine>.Instance);
-
-        var act = () => engine.TranscribeAsync("/tmp/audio.wav", new ProjectSettings
-        {
-            Engine = "WhisperNetOpenVino",
-            Model = "small",
-            LanguageMode = "Auto",
-        });
-
-        await act.Should().ThrowAsync<InvalidOperationException>()
-            .WithMessage("*missing openvino*");
-        runner.Requests.Should().BeEmpty();
-    }
-
-    [Fact]
     public void WhisperNetCudaEngine_RemainsSelectableEvenWhenProbeFails()
     {
         var engine = new WhisperNetCudaTranscriptionEngine(
@@ -240,15 +168,13 @@ public class TranscriptionEngineUnitTests
         var runner = new WhisperNetWorkerRunner(NullLogger<WhisperNetWorkerRunner>.Instance);
         var response = await runner.RunAsync(new WhisperNetWorkerRequest
         {
-            Mode = WhisperNetWorkerMode.OpenVino,
+            Mode = WhisperNetWorkerMode.Cpu,
             AudioPath = "/tmp/audio.wav",
             Model = "small",
             LanguageMode = "Auto",
             ModelsPath = "/tmp/models",
             AutoDownloadModels = false,
             LogSegments = false,
-            OpenVinoDevice = "GPU",
-            OpenVinoCachePath = null,
         }, workerPath, dotNetHostPath: null);
 
         response.PlainText.Should().Be("ok");
@@ -709,7 +635,7 @@ public class TranscriptionEngineUnitTests
     {
         public List<WhisperNetWorkerRequest> Requests { get; } = [];
 
-        public Task<WhisperNetWorkerResponse> RunAsync(WhisperNetWorkerRequest request, string workerPath, string? dotNetHostPath, CancellationToken ct = default)
+        public Task<WhisperNetWorkerResponse> RunAsync(WhisperNetWorkerRequest request, string workerPath, string? dotNetHostPath, string? extraLibraryDirectory = null, CancellationToken ct = default)
         {
             Requests.Add(request);
             return Task.FromResult(new WhisperNetWorkerResponse
@@ -773,16 +699,6 @@ public class TranscriptionEngineUnitTests
     {
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
             => Task.FromResult(responseFactory());
-    }
-
-    private sealed class AvailableOpenVinoEnvironmentProbe : IOpenVinoEnvironmentProbe
-    {
-        public string? GetAvailabilityError() => null;
-    }
-
-    private sealed class FailingOpenVinoEnvironmentProbe(string message) : IOpenVinoEnvironmentProbe
-    {
-        public string? GetAvailabilityError() => message;
     }
 
     private sealed class AvailableCudaEnvironmentProbe : ICudaEnvironmentProbe

@@ -23,6 +23,7 @@ import type { LanguageMode, ProjectDetailDto, ProjectSettingsDto } from '../../t
 import { formatEngineLabel } from '../../utils/transcription';
 import { coerceFixedLanguageCodeForEngine, getLanguageOptionsForEngine } from '../../utils/languages';
 import { useNotification } from '../notifications';
+import { DIARIZATION_MODES } from '../../config/diarizationOptions';
 
 interface Props {
   open: boolean;
@@ -56,6 +57,7 @@ function coerceSettings(
       : null,
     audioNormalizationEnabled: settings.audioNormalizationEnabled,
     diarizationEnabled: settings.diarizationEnabled,
+    diarizationMode: settings.diarizationMode ?? 'Basic',
   };
 }
 
@@ -263,6 +265,24 @@ export default function RetryProjectDialog({
               )}
               label="Speaker Diarization"
             />
+
+            {form.diarizationEnabled && (
+              <FormControl size="small" sx={{ minWidth: 200 }}>
+                <InputLabel id="diarization-mode-label">Diarization Mode</InputLabel>
+                <Select
+                  labelId="diarization-mode-label"
+                  label="Diarization Mode"
+                  value={form.diarizationMode}
+                  onChange={(e) => setForm({ ...form, diarizationMode: e.target.value })}
+                >
+                  {DIARIZATION_MODES.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      {option.label}
+                    </MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            )}
           </Box>
         )}
       </DialogContent>

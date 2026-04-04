@@ -58,6 +58,7 @@ public class ProjectSettings
     public string? LanguageCode { get; set; }
     public bool AudioNormalizationEnabled { get; set; } = true;
     public bool DiarizationEnabled { get; set; }
+    public string DiarizationMode { get; set; } = "Basic";
 }
 
 public class Transcript
@@ -84,5 +85,6 @@ public class GlobalSettings
     public string? DefaultLanguageCode { get; set; }
     public bool DefaultAudioNormalizationEnabled { get; set; } = true;
     public bool DefaultDiarizationEnabled { get; set; }
+    public string DefaultDiarizationMode { get; set; } = "Basic";
     public string DefaultTranscriptViewMode { get; set; } = "Readable";
 }

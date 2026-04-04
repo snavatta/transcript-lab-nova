@@ -24,6 +24,7 @@ import type { LanguageMode, ProjectSettingsDto } from '../../types';
 import { formatEngineLabel } from '../../utils/transcription';
 import { coerceFixedLanguageCodeForEngine, getLanguageOptionsForEngine } from '../../utils/languages';
 import { useNotification } from '../notifications';
+import { DIARIZATION_MODES } from '../../config/diarizationOptions';
 
 interface Props {
   open: boolean;
@@ -61,6 +62,7 @@ function createDefaultSettings(
     defaultLanguageCode: string | null;
     defaultAudioNormalizationEnabled: boolean;
     defaultDiarizationEnabled: boolean;
+    defaultDiarizationMode: string;
   },
   engineOptions: Array<{ engine: string; models: string[] }>,
 ): ProjectSettingsDto {
@@ -81,6 +83,7 @@ function createDefaultSettings(
       : null,
     audioNormalizationEnabled: defaults.defaultAudioNormalizationEnabled,
     diarizationEnabled: defaults.defaultDiarizationEnabled,
+    diarizationMode: defaults.defaultDiarizationMode ?? 'Basic',
   };
 }
 
@@ -371,6 +374,24 @@ export default function UploadBatchDrawer({
                   )}
                   label="Speaker Diarization"
                 />
+
+                {form.diarizationEnabled && (
+                  <FormControl size="small" sx={{ minWidth: 200 }}>
+                    <InputLabel id="diarization-mode-label">Diarization Mode</InputLabel>
+                    <Select
+                      labelId="diarization-mode-label"
+                      label="Diarization Mode"
+                      value={form.diarizationMode}
+                      onChange={(event) => setForm({ ...form, diarizationMode: event.target.value })}
+                    >
+                      {DIARIZATION_MODES.map((option) => (
+                        <MenuItem key={option.value} value={option.value}>
+                          {option.label}
+                        </MenuItem>
+                      ))}
+                    </Select>
+                  </FormControl>
+                )}
 
                 <FormControlLabel
                   control={(

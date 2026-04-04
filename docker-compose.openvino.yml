@@ -3,9 +3,7 @@ services:
     build:
       dockerfile: Dockerfile.openvino
     devices:
-      # Expose the full Intel DRM stack so OpenVINO can reach renderD* and card* nodes.
       - /dev/dri:/dev/dri
     environment:
-      # Use GPU by default. On hosts with both an iGPU and an Arc dGPU, set
-      # OPENVINO_DEVICE=GPU.1 if the discrete card is enumerated as the second GPU.
-      - Transcription__WhisperNet__OpenVinoDevice=${OPENVINO_DEVICE:-GPU}
+      - Transcription__OpenVinoGenAi__Device=${OPENVINO_DEVICE:-GPU}
+      - Transcription__OpenVinoWhisperSidecar__Device=${OPENVINO_DEVICE:-GPU}

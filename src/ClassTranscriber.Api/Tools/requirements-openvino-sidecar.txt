@@ -1,0 +1,9 @@
+openvino-genai
+fastapi[standard]
+uvicorn[standard]
+numpy
+# Test dependencies
+httpx
+pytest
+pytest-asyncio
+pytest-timeout

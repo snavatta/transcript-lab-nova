@@ -4,26 +4,11 @@ namespace ClassTranscriber.Api.Transcription;
 
 public interface ISpeakerDiarizer
 {
-    TranscriptSegmentDto[] AssignSpeakers(string audioPath, IReadOnlyList<TranscriptSegmentDto> segments, CancellationToken ct = default);
+    TranscriptSegmentDto[] AssignSpeakers(string audioPath, IReadOnlyList<TranscriptSegmentDto> segments, string mode = "Basic", CancellationToken ct = default);
 }
 
 public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
 {
-    private const int MergeGapMs = 450;
-    private const int MaxTurnDurationMs = 12_000;
-    private const int WordLikeSegmentDurationMs = 800;
-    private const int ExpandingTurnDurationMs = 1_200;
-    private const int PaddingMs = 120;
-    private const int FrameSizeMs = 30;
-    private const int FrameHopMs = 15;
-    private const int MinPitchHz = 85;
-    private const int MaxPitchHz = 320;
-    private const int MaxSpeakerCount = 3;
-    private const double MinClusterImprovementRatio = 0.05;
-    private const double MinCentroidDistance = 0.8;
-    private const double StrongPitchSplitThreshold = 0.18;
-
-    private static readonly double[] GoertzelFrequenciesHz = [150, 300, 600, 1200, 2400];
     private readonly ILogger<BasicSpeakerDiarizer> _logger;
 
     public BasicSpeakerDiarizer(ILogger<BasicSpeakerDiarizer> logger)
@@ -31,17 +16,18 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
         _logger = logger;
     }
 
-    public TranscriptSegmentDto[] AssignSpeakers(string audioPath, IReadOnlyList<TranscriptSegmentDto> segments, CancellationToken ct = default)
+    public TranscriptSegmentDto[] AssignSpeakers(string audioPath, IReadOnlyList<TranscriptSegmentDto> segments, string mode = "Basic", CancellationToken ct = default)
     {
         if (segments.Count == 0)
             return [];
 
+        var config = DiarizationConfig.FromMode(mode);
         var clonedSegments = segments.Select(segment => segment with { Speaker = null }).ToArray();
         if (clonedSegments.Length == 1)
             return LabelAllSegments(clonedSegments, "Speaker 1");
 
         var wave = PreparedAudioWaveFile.Read(audioPath);
-        var turns = BuildTurns(clonedSegments, wave.DurationMs);
+        var turns = BuildTurns(clonedSegments, wave.DurationMs, config);
         if (turns.Count == 0)
             return LabelAllSegments(clonedSegments, "Speaker 1");
 
@@ -49,10 +35,10 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
         for (var i = 0; i < turns.Count; i++)
         {
             ct.ThrowIfCancellationRequested();
-            features[i] = ExtractFeatures(wave, turns[i]);
+            features[i] = ExtractFeatures(wave, turns[i], config);
         }
 
-        var labels = AssignClusterLabels(features, turns);
+        var labels = AssignClusterLabels(features, turns, config);
         var smoothedLabels = SmoothAssignments(labels, turns);
         var speakerNames = BuildSpeakerNames(smoothedLabels);
 
@@ -78,7 +64,8 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
 
     private static IReadOnlyList<DiarizationTurn> BuildTurns(
         IReadOnlyList<TranscriptSegmentDto> segments,
-        long durationMs)
+        long durationMs,
+        DiarizationConfig config)
     {
         var turns = new List<DiarizationTurn>();
         var currentStartSegment = -1;
@@ -106,9 +93,9 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
             var candidateDurationMs = normalizedEnd - currentStartMs;
             var currentTurnDurationMs = currentEndMs - currentStartMs;
             var currentSegmentDurationMs = normalizedEnd - normalizedStart;
-            var shouldMergeIntoCurrentTurn = gapMs <= MergeGapMs
-                && candidateDurationMs <= MaxTurnDurationMs
-                && (currentTurnDurationMs <= ExpandingTurnDurationMs || currentSegmentDurationMs <= WordLikeSegmentDurationMs);
+            var shouldMergeIntoCurrentTurn = gapMs <= config.MergeGapMs
+                && candidateDurationMs <= config.MaxTurnDurationMs
+                && (currentTurnDurationMs <= config.ExpandingTurnDurationMs || currentSegmentDurationMs <= config.WordLikeSegmentDurationMs);
 
             if (!shouldMergeIntoCurrentTurn)
             {
@@ -128,20 +115,20 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
         return turns;
     }
 
-    private static TurnFeatures ExtractFeatures(PreparedAudioWaveFile wave, DiarizationTurn turn)
+    private static TurnFeatures ExtractFeatures(PreparedAudioWaveFile wave, DiarizationTurn turn, DiarizationConfig config)
     {
         var sampleRate = wave.SampleRate;
-        var startSample = MillisecondsToSampleIndex(Math.Max(0L, turn.StartMs - PaddingMs), sampleRate, wave.Samples.Length);
-        var endSample = MillisecondsToSampleIndex(Math.Min(wave.DurationMs, turn.EndMs + PaddingMs), sampleRate, wave.Samples.Length);
+        var startSample = MillisecondsToSampleIndex(Math.Max(0L, turn.StartMs - config.PaddingMs), sampleRate, wave.Samples.Length);
+        var endSample = MillisecondsToSampleIndex(Math.Min(wave.DurationMs, turn.EndMs + config.PaddingMs), sampleRate, wave.Samples.Length);
         if (endSample <= startSample)
             endSample = Math.Min(wave.Samples.Length, startSample + Math.Max(1, sampleRate / 2));
 
         var slice = wave.Samples[startSample..endSample];
         if (slice.Length == 0)
-            return TurnFeatures.Silent(turn.DurationMs);
+            return TurnFeatures.Silent(turn.DurationMs, config.GoertzelFrequenciesHz.Length);
 
-        var frameSize = Math.Max(64, (int)Math.Round(sampleRate * (FrameSizeMs / 1000d)));
-        var frameHop = Math.Max(32, (int)Math.Round(sampleRate * (FrameHopMs / 1000d)));
+        var frameSize = Math.Max(64, (int)Math.Round(sampleRate * (config.FrameSizeMs / 1000d)));
+        var frameHop = Math.Max(32, (int)Math.Round(sampleRate * (config.FrameHopMs / 1000d)));
         var frames = new List<FrameFeatures>();
 
         for (var offset = 0; offset < slice.Length; offset += frameHop)
@@ -150,13 +137,13 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
             if (length <= 0)
                 break;
 
-            frames.Add(ExtractFrameFeatures(slice, offset, length, sampleRate));
+            frames.Add(ExtractFrameFeatures(slice, offset, length, sampleRate, config));
             if (offset + length >= slice.Length)
                 break;
         }
 
         if (frames.Count == 0)
-            frames.Add(ExtractFrameFeatures(slice, 0, slice.Length, sampleRate));
+            frames.Add(ExtractFrameFeatures(slice, 0, slice.Length, sampleRate, config));
 
         var meanRms = frames.Average(frame => frame.Rms);
         var silenceThreshold = Math.Max(0.008, meanRms * 0.45);
@@ -173,7 +160,7 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
         if (totalBandEnergy <= 0)
             totalBandEnergy = 1;
 
-        var normalizedBandEnergies = new double[GoertzelFrequenciesHz.Length];
+        var normalizedBandEnergies = new double[config.GoertzelFrequenciesHz.Length];
         for (var bandIndex = 0; bandIndex < normalizedBandEnergies.Length; bandIndex++)
             normalizedBandEnergies[bandIndex] = activeFrames.Sum(frame => frame.BandEnergies[bandIndex]) / totalBandEnergy;
 
@@ -182,14 +169,14 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
             [
                 Math.Log10(activeFrames.Average(frame => frame.Rms) + 1e-6),
                 activeFrames.Average(frame => frame.ZeroCrossingRate),
-                pitchMean / MaxPitchHz,
-                pitchStdDev / MaxPitchHz,
+                pitchMean / config.MaxPitchHz,
+                pitchStdDev / config.MaxPitchHz,
                 voicedFrames.Length / (double)activeFrames.Length,
                 .. normalizedBandEnergies,
             ]);
     }
 
-    private static FrameFeatures ExtractFrameFeatures(float[] samples, int offset, int length, int sampleRate)
+    private static FrameFeatures ExtractFrameFeatures(float[] samples, int offset, int length, int sampleRate, DiarizationConfig config)
     {
         double energy = 0;
         var zeroCrossings = 0;
@@ -213,12 +200,12 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
         }
 
         var rms = Math.Sqrt(energy / Math.Max(1, length));
-        var bandEnergies = new double[GoertzelFrequenciesHz.Length];
-        for (var bandIndex = 0; bandIndex < GoertzelFrequenciesHz.Length; bandIndex++)
-            bandEnergies[bandIndex] = ComputeGoertzelPower(samples, offset, length, sampleRate, GoertzelFrequenciesHz[bandIndex]);
+        var bandEnergies = new double[config.GoertzelFrequenciesHz.Length];
+        for (var bandIndex = 0; bandIndex < config.GoertzelFrequenciesHz.Length; bandIndex++)
+            bandEnergies[bandIndex] = ComputeGoertzelPower(samples, offset, length, sampleRate, config.GoertzelFrequenciesHz[bandIndex]);
 
         var pitchHz = rms >= 0.01
-            ? EstimatePitchHz(samples, offset, length, sampleRate, mean)
+            ? EstimatePitchHz(samples, offset, length, sampleRate, mean, config)
             : 0d;
 
         return new FrameFeatures(
@@ -228,10 +215,10 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
             bandEnergies);
     }
 
-    private static double EstimatePitchHz(float[] samples, int offset, int length, int sampleRate, double mean)
+    private static double EstimatePitchHz(float[] samples, int offset, int length, int sampleRate, double mean, DiarizationConfig config)
     {
-        var minLag = Math.Max(1, sampleRate / MaxPitchHz);
-        var maxLag = Math.Min(length - 2, sampleRate / MinPitchHz);
+        var minLag = Math.Max(1, sampleRate / config.MaxPitchHz);
+        var maxLag = Math.Min(length - 2, sampleRate / config.MinPitchHz);
         if (maxLag <= minLag)
             return 0;
 
@@ -265,7 +252,7 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
             }
         }
 
-        if (bestLag == 0 || bestCorrelation < 0.35)
+        if (bestLag == 0 || bestCorrelation < config.PitchCorrelationThreshold)
             return 0;
 
         return sampleRate / (double)bestLag;
@@ -289,7 +276,7 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
         return Math.Max(0, q1 * q1 + q2 * q2 - coefficient * q1 * q2);
     }
 
-    private static int[] AssignClusterLabels(IReadOnlyList<TurnFeatures> features, IReadOnlyList<DiarizationTurn> turns)
+    private static int[] AssignClusterLabels(IReadOnlyList<TurnFeatures> features, IReadOnlyList<DiarizationTurn> turns, DiarizationConfig config)
     {
         if (features.Count == 0)
             return [];
@@ -303,7 +290,7 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
         var bestModel = baseModel;
         var bestScore = double.NegativeInfinity;
 
-        var maxSpeakers = Math.Min(MaxSpeakerCount, normalized.Length);
+        var maxSpeakers = Math.Min(config.MaxSpeakerCount, normalized.Length);
         for (var speakerCount = 2; speakerCount <= maxSpeakers; speakerCount++)
         {
             var model = RunKMeans(normalized, sampleWeights, speakerCount);
@@ -313,11 +300,11 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
             var improvement = baseModel.WithinClusterSumOfSquares <= 0
                 ? 0
                 : 1d - (model.WithinClusterSumOfSquares / baseModel.WithinClusterSumOfSquares);
-            if (improvement < MinClusterImprovementRatio)
+            if (improvement < config.MinClusterImprovementRatio)
                 continue;
 
             var centroidDistance = GetMinimumCentroidDistance(model.Centroids);
-            if (centroidDistance < MinCentroidDistance)
+            if (centroidDistance < config.MinCentroidDistance)
                 continue;
 
             var score = ComputeCalinskiHarabaszScore(normalized, sampleWeights, model);
@@ -330,7 +317,7 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
 
         if (bestModel.ClusterCount <= 1)
         {
-            var pitchFallback = TryAssignByPitch(features);
+            var pitchFallback = TryAssignByPitch(features, config);
             if (pitchFallback is not null)
                 return pitchFallback;
 
@@ -342,7 +329,7 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
         return bestModel.Assignments;
     }
 
-    private static int[]? TryAssignByPitch(IReadOnlyList<TurnFeatures> features)
+    private static int[]? TryAssignByPitch(IReadOnlyList<TurnFeatures> features, DiarizationConfig config)
     {
         var voicedTurns = features
             .Select((feature, index) => new { index, pitch = feature.Values[2] })
@@ -365,7 +352,7 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
             }
         }
 
-        if (gapIndex < 0 || largestGap < StrongPitchSplitThreshold)
+        if (gapIndex < 0 || largestGap < config.StrongPitchSplitThreshold)
             return null;
 
         var threshold = (voicedTurns[gapIndex].pitch + voicedTurns[gapIndex + 1].pitch) / 2d;
@@ -717,9 +704,64 @@ public sealed class BasicSpeakerDiarizer : ISpeakerDiarizer
 
     private sealed record TurnFeatures(long DurationMs, double[] Values)
     {
-        public static TurnFeatures Silent(long durationMs)
-            => new(durationMs, [0, 0, 0, 0, 0, 0, 0, 0, 0, 0]);
+        public static TurnFeatures Silent(long durationMs, int goertzelBandCount)
+            => new(durationMs, new double[5 + goertzelBandCount]);
     }
 
     private sealed record KMeansResult(int[] Assignments, double[][] Centroids, int ClusterCount, double WithinClusterSumOfSquares);
+
+    private sealed record DiarizationConfig(
+        int MergeGapMs,
+        int MaxTurnDurationMs,
+        int WordLikeSegmentDurationMs,
+        int ExpandingTurnDurationMs,
+        int PaddingMs,
+        int FrameSizeMs,
+        int FrameHopMs,
+        int MinPitchHz,
+        int MaxPitchHz,
+        int MaxSpeakerCount,
+        double MinClusterImprovementRatio,
+        double MinCentroidDistance,
+        double StrongPitchSplitThreshold,
+        double PitchCorrelationThreshold,
+        double[] GoertzelFrequenciesHz)
+    {
+        public static DiarizationConfig Basic { get; } = new(
+            MergeGapMs: 450,
+            MaxTurnDurationMs: 12_000,
+            WordLikeSegmentDurationMs: 800,
+            ExpandingTurnDurationMs: 1_200,
+            PaddingMs: 120,
+            FrameSizeMs: 30,
+            FrameHopMs: 15,
+            MinPitchHz: 85,
+            MaxPitchHz: 320,
+            MaxSpeakerCount: 3,
+            MinClusterImprovementRatio: 0.05,
+            MinCentroidDistance: 0.8,
+            StrongPitchSplitThreshold: 0.18,
+            PitchCorrelationThreshold: 0.35,
+            GoertzelFrequenciesHz: [150, 300, 600, 1200, 2400]);
+
+        public static DiarizationConfig Improved { get; } = new(
+            MergeGapMs: 350,
+            MaxTurnDurationMs: 15_000,
+            WordLikeSegmentDurationMs: 800,
+            ExpandingTurnDurationMs: 1_200,
+            PaddingMs: 150,
+            FrameSizeMs: 25,
+            FrameHopMs: 10,
+            MinPitchHz: 80,
+            MaxPitchHz: 350,
+            MaxSpeakerCount: 6,
+            MinClusterImprovementRatio: 0.03,
+            MinCentroidDistance: 0.5,
+            StrongPitchSplitThreshold: 0.12,
+            PitchCorrelationThreshold: 0.25,
+            GoertzelFrequenciesHz: [150, 225, 300, 450, 600, 900, 1200, 1800, 2400, 3600]);
+
+        public static DiarizationConfig FromMode(string mode)
+            => mode == "Improved" ? Improved : Basic;
+    }
 }

@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import {
   Alert,
   Box,
@@ -7,7 +7,6 @@ import {
   CircularProgress,
   Divider,
   FormControl,
-  FormControlLabel,
   InputLabel,
   MenuItem,
   Paper,
@@ -18,8 +17,10 @@ import {
   Table,
   TableBody,
   TableCell,
+  TableContainer,
   TableHead,
   TableRow,
+  Tooltip,
   Typography,
 } from '@mui/material';
 import SaveIcon from '@mui/icons-material/Save';
@@ -27,6 +28,9 @@ import RestoreIcon from '@mui/icons-material/Restore';
 import DownloadIcon from '@mui/icons-material/Download';
 import RefreshIcon from '@mui/icons-material/Refresh';
 import ScienceIcon from '@mui/icons-material/Science';
+import TuneIcon from '@mui/icons-material/Tune';
+import ExtensionIcon from '@mui/icons-material/Extension';
+import InfoOutlinedIcon from '@mui/icons-material/InfoOutlined';
 import TopBar from '../components/shell/TopBar';
 import { useSettings, useTranscriptionModels, useTranscriptionOptions } from '../hooks/useData';
 import { ApiError, settingsApi } from '../api';
@@ -40,6 +44,7 @@ import type {
 } from '../types';
 import { formatEngineLabel } from '../utils/transcription';
 import { coerceFixedLanguageCodeForEngine, getLanguageOptionsForEngine } from '../utils/languages';
+import { DIARIZATION_MODES } from '../config/diarizationOptions';
 
 const probeStateColor: Record<string, 'default' | 'success' | 'warning' | 'error' | 'info'> = {
   Ready: 'success',
@@ -69,6 +74,16 @@ export default function SettingsPage() {
   const [modelActionKey, setModelActionKey] = useState<string | null>(null);
   const [modelError, setModelError] = useState<string | null>(null);
 
+  const groupedModels = useMemo(() => {
+    const map = new Map<string, TranscriptionModelEntryDto[]>();
+    for (const model of modelCatalog?.models ?? []) {
+      const group = map.get(model.engine) ?? [];
+      group.push(model);
+      map.set(model.engine, group);
+    }
+    return Array.from(map.entries());
+  }, [modelCatalog]);
+
   useEffect(() => {
     if (settings && !form) {
       setForm({
@@ -80,6 +95,7 @@ export default function SettingsPage() {
           : null,
         defaultAudioNormalizationEnabled: settings.defaultAudioNormalizationEnabled,
         defaultDiarizationEnabled: settings.defaultDiarizationEnabled,
+        defaultDiarizationMode: settings.defaultDiarizationMode ?? 'Basic',
         defaultTranscriptViewMode: settings.defaultTranscriptViewMode,
       });
     }
@@ -110,6 +126,7 @@ export default function SettingsPage() {
           : null,
         defaultAudioNormalizationEnabled: settings.defaultAudioNormalizationEnabled,
         defaultDiarizationEnabled: settings.defaultDiarizationEnabled,
+        defaultDiarizationMode: settings.defaultDiarizationMode ?? 'Basic',
         defaultTranscriptViewMode: settings.defaultTranscriptViewMode,
       });
     }
@@ -167,7 +184,10 @@ export default function SettingsPage() {
     return (
       <>
         <TopBar title="Settings" />
-        <Skeleton variant="rounded" height={400} />
+        <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
+          <Skeleton variant="rounded" height={360} />
+          <Skeleton variant="rounded" height={460} />
+        </Box>
       </>
     );
   }
@@ -194,72 +214,158 @@ export default function SettingsPage() {
         }
       />
 
-      <Box
-        sx={{
-          display: 'flex',
-          flexDirection: 'column',
-          gap: 3,
-          alignItems: 'start',
-        }}
-      >
+      <Box sx={{ display: 'flex', flexDirection: 'column', gap: 3 }}>
         <Paper variant="outlined" sx={{ p: 3, width: '100%' }}>
-          <Typography variant="subtitle1" gutterBottom fontWeight={600}>
-            Default Transcription Settings
-          </Typography>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            <TuneIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
+            <Typography variant="subtitle1" fontWeight={600}>
+              Default Transcription Settings
+            </Typography>
+          </Box>
           <Typography variant="body2" color="text.secondary" sx={{ mb: 3 }}>
             These defaults apply to new uploads only. Existing projects are not affected.
           </Typography>
 
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5 }}>
-            <FormControl fullWidth>
-              <InputLabel>Engine</InputLabel>
-              <Select
-                value={form.defaultEngine}
-                label="Engine"
-                onChange={(e) => handleEngineChange(e.target.value)}
-              >
-                {engineOptions.map((option) => (
-                  <MenuItem key={option.engine} value={option.engine}>{formatEngineLabel(option.engine)}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <FormControl fullWidth>
-              <InputLabel>Model</InputLabel>
-              <Select
-                value={form.defaultModel}
-                label="Model"
-                onChange={(e) => setForm({ ...form, defaultModel: e.target.value })}
-              >
-                {modelOptions.map((m) => (
-                  <MenuItem key={m} value={m}>{m}</MenuItem>
-                ))}
-              </Select>
-            </FormControl>
-
-            <FormControl fullWidth>
-              <InputLabel>Language Mode</InputLabel>
-              <Select
-                value={form.defaultLanguageMode}
-                label="Language Mode"
-                onChange={(e) => handleLanguageModeChange(e.target.value as LanguageMode)}
-              >
-                <MenuItem value="Auto">Auto-detect</MenuItem>
-                <MenuItem value="Fixed">Fixed</MenuItem>
-              </Select>
-            </FormControl>
-
-            {form.defaultLanguageMode === 'Fixed' && (
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+                gap: 2,
+              }}
+            >
               <FormControl fullWidth>
-                <InputLabel>Fixed Language</InputLabel>
+                <InputLabel>Engine</InputLabel>
                 <Select
-                  value={coerceFixedLanguageCodeForEngine(form.defaultEngine, form.defaultLanguageCode)}
-                  label="Fixed Language"
-                  onChange={(e) => setForm({ ...form, defaultLanguageCode: e.target.value })}
+                  value={form.defaultEngine}
+                  label="Engine"
+                  onChange={(e) => handleEngineChange(e.target.value)}
                 >
-                  {languageOptions.map((option) => (
-                    <MenuItem key={option.code} value={option.code}>
-                      {option.label} ({option.code})
+                  {engineOptions.map((option) => (
+                    <MenuItem key={option.engine} value={option.engine}>{formatEngineLabel(option.engine)}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+
+              <FormControl fullWidth>
+                <InputLabel>Model</InputLabel>
+                <Select
+                  value={form.defaultModel}
+                  label="Model"
+                  onChange={(e) => setForm({ ...form, defaultModel: e.target.value })}
+                >
+                  {modelOptions.map((m) => (
+                    <MenuItem key={m} value={m}>{m}</MenuItem>
+                  ))}
+                </Select>
+              </FormControl>
+            </Box>
+
+            {(form.defaultEngine === 'OpenVinoWhisperSidecar' || form.defaultEngine === 'OpenAiCompatible') && (
+              <Box
+                sx={{
+                  display: 'flex',
+                  alignItems: 'flex-start',
+                  gap: 1,
+                  p: 1.5,
+                  borderRadius: 1,
+                  bgcolor: 'action.hover',
+                }}
+              >
+                <InfoOutlinedIcon sx={{ fontSize: 16, mt: 0.25, color: 'text.secondary', flexShrink: 0 }} />
+                <Typography variant="caption" color="text.secondary">
+                  {form.defaultEngine === 'OpenVinoWhisperSidecar'
+                    ? 'Uses a local OpenVINO GPU sidecar. Requires the OpenVINO Python environment to be configured.'
+                    : 'Requires backend configuration in appsettings.json. Contact your administrator to configure the target URL and model.'}
+                </Typography>
+              </Box>
+            )}
+
+            <Box
+              sx={{
+                display: 'grid',
+                gridTemplateColumns: { xs: '1fr', md: 'repeat(2, minmax(0, 1fr))' },
+                gap: 2,
+              }}
+            >
+              <FormControl fullWidth>
+                <InputLabel>Language Mode</InputLabel>
+                <Select
+                  value={form.defaultLanguageMode}
+                  label="Language Mode"
+                  onChange={(e) => handleLanguageModeChange(e.target.value as LanguageMode)}
+                >
+                  <MenuItem value="Auto">Auto-detect</MenuItem>
+                  <MenuItem value="Fixed">Fixed</MenuItem>
+                </Select>
+              </FormControl>
+
+              {form.defaultLanguageMode === 'Fixed' && (
+                <FormControl fullWidth>
+                  <InputLabel>Fixed Language</InputLabel>
+                  <Select
+                    value={coerceFixedLanguageCodeForEngine(form.defaultEngine, form.defaultLanguageCode)}
+                    label="Fixed Language"
+                    onChange={(e) => setForm({ ...form, defaultLanguageCode: e.target.value })}
+                  >
+                    {languageOptions.map((option) => (
+                      <MenuItem key={option.code} value={option.code}>
+                        {option.label} ({option.code})
+                      </MenuItem>
+                    ))}
+                  </Select>
+                </FormControl>
+              )}
+            </Box>
+
+            <Divider />
+
+            <Typography variant="subtitle2" color="text.secondary">
+              Processing Options
+            </Typography>
+
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+              <Box>
+                <Typography variant="body2" fontWeight={500}>Audio Normalization</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Levels audio volume before transcription for improved accuracy on quiet or variable recordings.
+                </Typography>
+              </Box>
+              <Switch
+                checked={form.defaultAudioNormalizationEnabled}
+                onChange={(e) => setForm({ ...form, defaultAudioNormalizationEnabled: e.target.checked })}
+                inputProps={{ 'aria-label': 'Audio Normalization' }}
+              />
+            </Box>
+
+            <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 2 }}>
+              <Box>
+                <Typography variant="body2" fontWeight={500}>Speaker Diarization</Typography>
+                <Typography variant="caption" color="text.secondary">
+                  Identifies and separates individual speakers in the transcript.
+                </Typography>
+              </Box>
+              <Switch
+                checked={form.defaultDiarizationEnabled}
+                onChange={(e) => setForm({ ...form, defaultDiarizationEnabled: e.target.checked })}
+                inputProps={{ 'aria-label': 'Speaker Diarization' }}
+              />
+            </Box>
+
+            {form.defaultDiarizationEnabled && (
+              <FormControl fullWidth>
+                <InputLabel>Default Diarization Mode</InputLabel>
+                <Select
+                  value={form.defaultDiarizationMode}
+                  label="Default Diarization Mode"
+                  onChange={(e) => setForm({ ...form, defaultDiarizationMode: e.target.value })}
+                >
+                  {DIARIZATION_MODES.map((option) => (
+                    <MenuItem key={option.value} value={option.value}>
+                      <Box>
+                        <Typography variant="body2">{option.label}</Typography>
+                        <Typography variant="caption" color="text.secondary">{option.description}</Typography>
+                      </Box>
                     </MenuItem>
                   ))}
                 </Select>
@@ -268,27 +374,9 @@ export default function SettingsPage() {
 
             <Divider />
 
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={form.defaultAudioNormalizationEnabled}
-                  onChange={(e) => setForm({ ...form, defaultAudioNormalizationEnabled: e.target.checked })}
-                />
-              }
-              label="Audio Normalization"
-            />
-
-            <FormControlLabel
-              control={
-                <Switch
-                  checked={form.defaultDiarizationEnabled}
-                  onChange={(e) => setForm({ ...form, defaultDiarizationEnabled: e.target.checked })}
-                />
-              }
-              label="Speaker Diarization"
-            />
-
-            <Divider />
+            <Typography variant="subtitle2" color="text.secondary">
+              Display Options
+            </Typography>
 
             <FormControl fullWidth>
               <InputLabel>Default Transcript View</InputLabel>
@@ -305,17 +393,15 @@ export default function SettingsPage() {
         </Paper>
 
         <Paper variant="outlined" sx={{ p: 3, minWidth: 0, width: '100%' }}>
-          <Stack spacing={1.5} sx={{ mb: 2 }}>
+          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, mb: 0.5 }}>
+            <ExtensionIcon sx={{ fontSize: 20, color: 'text.secondary' }} />
             <Typography variant="subtitle1" fontWeight={600}>
               Model Manager
             </Typography>
-            <Typography variant="body2" color="text.secondary">
-              Download, refresh, and actively probe local model installs before running a real project.
-            </Typography>
-            <Typography variant="caption" color="text.secondary">
-              Installed models are probed automatically when this page loads. That makes runtime failures visible here instead of only during uploads.
-            </Typography>
-          </Stack>
+          </Box>
+          <Typography variant="body2" color="text.secondary" sx={{ mb: 2 }}>
+            Download, probe, and manage local model installs. Models are probed automatically on page load so runtime problems are visible before you upload.
+          </Typography>
 
           {modelError && (
             <Alert severity="error" variant="outlined" sx={{ mb: 2 }}>
@@ -324,13 +410,12 @@ export default function SettingsPage() {
           )}
 
           {modelsLoading && !modelCatalog ? (
-            <Skeleton variant="rounded" height={420} />
+            <Skeleton variant="rounded" height={320} />
           ) : (
-            <Box sx={{ overflowX: 'auto' }}>
-              <Table size="small" sx={{ minWidth: 760 }}>
+            <TableContainer>
+              <Table size="small" sx={{ minWidth: 600 }}>
                 <TableHead>
                   <TableRow>
-                    <TableCell>Engine</TableCell>
                     <TableCell>Model</TableCell>
                     <TableCell>Filesystem</TableCell>
                     <TableCell>Probe</TableCell>
@@ -338,7 +423,23 @@ export default function SettingsPage() {
                   </TableRow>
                 </TableHead>
                 <TableBody>
-                  {modelCatalog?.models.map((model) => {
+                  {groupedModels.map(([engine, models]) => (
+                    <Fragment key={engine}>
+                      <TableRow>
+                        <TableCell
+                          colSpan={4}
+                          sx={{
+                            bgcolor: 'action.hover',
+                            py: 0.75,
+                            borderBottom: 'none',
+                          }}
+                        >
+                          <Typography variant="caption" fontWeight={600} color="text.secondary">
+                            {formatEngineLabel(engine)}
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                      {models.map((model) => {
                     const rowKey = getRowKey(model);
                     const isDownloading = modelActionKey === `${rowKey}:Download`;
                     const isRedownloading = modelActionKey === `${rowKey}:Redownload`;
@@ -346,9 +447,8 @@ export default function SettingsPage() {
 
                     return (
                       <TableRow key={rowKey} hover>
-                        <TableCell sx={{ whiteSpace: 'nowrap' }}>{formatEngineLabel(model.engine)}</TableCell>
                         <TableCell sx={{ whiteSpace: 'nowrap' }}>{model.model}</TableCell>
-                        <TableCell sx={{ minWidth: 220 }}>
+                        <TableCell sx={{ minWidth: 200, maxWidth: 280 }}>
                           <Stack spacing={0.5}>
                             <Chip
                               size="small"
@@ -357,7 +457,18 @@ export default function SettingsPage() {
                               color={model.isInstalled ? 'success' : 'default'}
                               sx={{ width: 'fit-content' }}
                             />
-                            <Typography variant="caption" color="text.secondary" sx={{ wordBreak: 'break-all' }}>
+                            <Typography
+                              variant="caption"
+                              color="text.secondary"
+                              title={model.installPath ?? undefined}
+                              sx={{
+                                overflow: 'hidden',
+                                textOverflow: 'ellipsis',
+                                whiteSpace: 'nowrap',
+                                maxWidth: 260,
+                                display: 'block',
+                              }}
+                            >
                               {model.installPath ?? 'No install path available'}
                             </Typography>
                           </Stack>
@@ -377,41 +488,58 @@ export default function SettingsPage() {
                         </TableCell>
                         <TableCell align="right" sx={{ whiteSpace: 'nowrap' }}>
                           <Stack direction="row" spacing={1} justifyContent="flex-end">
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              startIcon={isDownloading ? <CircularProgress size={14} /> : <DownloadIcon fontSize="small" />}
-                              disabled={!model.canDownload || modelActionKey !== null}
-                              onClick={() => handleModelAction(model, 'Download')}
-                            >
-                              Download
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              startIcon={isRedownloading ? <CircularProgress size={14} /> : <RefreshIcon fontSize="small" />}
-                              disabled={!model.canRedownload || modelActionKey !== null}
-                              onClick={() => handleModelAction(model, 'Redownload')}
-                            >
-                              Redownload
-                            </Button>
-                            <Button
-                              size="small"
-                              variant="outlined"
-                              startIcon={isProbing ? <CircularProgress size={14} /> : <ScienceIcon fontSize="small" />}
-                              disabled={!model.canProbe || modelActionKey !== null}
-                              onClick={() => handleModelAction(model, 'Probe')}
-                            >
-                              Probe
-                            </Button>
+                            {model.canRedownload ? (
+                              <Tooltip title="Re-download to replace the current local copy">
+                                <span>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={isRedownloading ? <CircularProgress size={14} /> : <RefreshIcon fontSize="small" />}
+                                    disabled={modelActionKey !== null}
+                                    onClick={() => handleModelAction(model, 'Redownload')}
+                                  >
+                                    Redownload
+                                  </Button>
+                                </span>
+                              </Tooltip>
+                            ) : (
+                              <Tooltip title="Download this model to local storage">
+                                <span>
+                                  <Button
+                                    size="small"
+                                    variant="outlined"
+                                    startIcon={isDownloading ? <CircularProgress size={14} /> : <DownloadIcon fontSize="small" />}
+                                    disabled={!model.canDownload || modelActionKey !== null}
+                                    onClick={() => handleModelAction(model, 'Download')}
+                                  >
+                                    Download
+                                  </Button>
+                                </span>
+                              </Tooltip>
+                            )}
+                            <Tooltip title="Run a live probe to verify the model loads correctly">
+                              <span>
+                                <Button
+                                  size="small"
+                                  variant="outlined"
+                                  startIcon={isProbing ? <CircularProgress size={14} /> : <ScienceIcon fontSize="small" />}
+                                  disabled={!model.canProbe || modelActionKey !== null}
+                                  onClick={() => handleModelAction(model, 'Probe')}
+                                >
+                                  Probe
+                                </Button>
+                              </span>
+                            </Tooltip>
                           </Stack>
                         </TableCell>
                       </TableRow>
                     );
                   })}
+                    </Fragment>
+                  ))}
                 </TableBody>
               </Table>
-            </Box>
+            </TableContainer>
           )}
         </Paper>
       </Box>

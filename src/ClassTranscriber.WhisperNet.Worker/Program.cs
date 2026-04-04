@@ -1,5 +1,4 @@
 using System.Collections.Concurrent;
-using System.IO.Compression;
 using System.Text.Json;
 using Whisper.net;
 using Whisper.net.Ggml;
@@ -60,19 +59,6 @@ internal static class WhisperNetWorkerProcessor
             ? builder.WithLanguage(request.LanguageCode.Trim())
             : builder.WithLanguageDetection();
 
-        if (request.Mode == WhisperNetWorkerMode.OpenVino)
-        {
-            var openVinoManifestPath = await WhisperModelStore.ResolveOpenVinoManifestPathAsync(
-                request.Model,
-                request.ModelsPath,
-                request.AutoDownloadModels,
-                CancellationToken.None);
-            builder = builder.WithOpenVinoEncoder(
-                openVinoManifestPath,
-                "GPU",
-                request.OpenVinoCachePath);
-        }
-
         using var processor = builder.Build();
         await using var audioStream = File.OpenRead(request.AudioPath);
 
@@ -127,7 +113,6 @@ internal static class WhisperRuntimeConfigurator
         {
             WhisperNetWorkerMode.Cpu => [RuntimeLibrary.Cpu, RuntimeLibrary.CpuNoAvx],
             WhisperNetWorkerMode.Cuda => [RuntimeLibrary.Cuda],
-            WhisperNetWorkerMode.OpenVino => [RuntimeLibrary.OpenVino],
             _ => throw new InvalidOperationException($"Unsupported Whisper.net worker mode '{mode}'."),
         };
     }
@@ -175,68 +160,6 @@ internal static class WhisperModelStore
         }
     }
 
-    public static async Task<string> ResolveOpenVinoManifestPathAsync(string model, string modelsPath, bool autoDownloadModels, CancellationToken ct)
-    {
-        var modelsRoot = Path.GetFullPath(modelsPath);
-        Directory.CreateDirectory(modelsRoot);
-
-        var ggmlType = MapToGgmlType(model);
-        var manifestFileName = WhisperGgmlDownloader.Default.GetOpenVinoManifestFileName(ggmlType);
-        var openVinoRoot = Path.Combine(modelsRoot, "openvino", model);
-        var existingManifestPath = FindManifestPath(openVinoRoot, manifestFileName);
-        if (existingManifestPath is not null)
-            return existingManifestPath;
-
-        if (!autoDownloadModels)
-        {
-            throw new FileNotFoundException(
-                $"Whisper.net OpenVINO encoder assets were not found under {openVinoRoot}. Auto-download is disabled.");
-        }
-
-        var modelLock = ModelLocks.GetOrAdd(openVinoRoot, _ => new SemaphoreSlim(1, 1));
-        await modelLock.WaitAsync(ct);
-        try
-        {
-            existingManifestPath = FindManifestPath(openVinoRoot, manifestFileName);
-            if (existingManifestPath is not null)
-                return existingManifestPath;
-
-            Directory.CreateDirectory(openVinoRoot);
-            var zipPath = Path.Combine(openVinoRoot, "encoder-openvino.zip");
-            await Console.Error.WriteLineAsync($"Whisper.net worker downloading OpenVINO encoder assets for '{model}' to {openVinoRoot}");
-            using var archiveStream = await WhisperGgmlDownloader.Default.GetEncoderOpenVinoModelAsync(ggmlType, ct);
-            await using (var destination = new FileStream(zipPath, FileMode.Create, FileAccess.Write, FileShare.None))
-            {
-                await CopyToWithProgressAsync(
-                    archiveStream,
-                    destination,
-                    archiveStream.CanSeek ? archiveStream.Length : null,
-                    $"Whisper.net OpenVINO assets {model}",
-                    ct);
-                await destination.FlushAsync(ct);
-            }
-
-            ZipFile.ExtractToDirectory(zipPath, openVinoRoot, overwriteFiles: true);
-            File.Delete(zipPath);
-
-            return FindManifestPath(openVinoRoot, manifestFileName)
-                ?? throw new FileNotFoundException(
-                    $"Whisper.net OpenVINO encoder manifest {manifestFileName} was not found after extracting assets to {openVinoRoot}.");
-        }
-        finally
-        {
-            modelLock.Release();
-        }
-    }
-
-    private static string? FindManifestPath(string root, string manifestFileName)
-    {
-        if (!Directory.Exists(root))
-            return null;
-
-        return Directory.EnumerateFiles(root, manifestFileName, SearchOption.AllDirectories).FirstOrDefault();
-    }
-
     private static GgmlType MapToGgmlType(string model) => model.ToLowerInvariant() switch
     {
         "tiny" => GgmlType.Tiny,
@@ -244,6 +167,7 @@ internal static class WhisperModelStore
         "small" => GgmlType.Small,
         "medium" => GgmlType.Medium,
         "large" => GgmlType.LargeV3,
+        "large-v3-turbo" => GgmlType.LargeV3Turbo,
         _ => throw new ArgumentException($"Unsupported Whisper.net model '{model}'.", nameof(model)),
     };
 
@@ -324,8 +248,6 @@ internal sealed record WhisperNetWorkerRequest
     public required string ModelsPath { get; init; }
     public required bool AutoDownloadModels { get; init; }
     public required bool LogSegments { get; init; }
-    public required string OpenVinoDevice { get; init; }
-    public string? OpenVinoCachePath { get; init; }
 }
 
 internal sealed record WhisperNetWorkerResponse

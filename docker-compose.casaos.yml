@@ -11,12 +11,12 @@ services:
       ASPNETCORE_ENVIRONMENT: Production
       Storage__BasePath: /data
       ConnectionStrings__DefaultConnection: "Data Source=/data/transcriptlab.db"
-      Transcription__WhisperNet__OpenVinoDevice: GPU
+      Transcription__OpenVinoWhisperSidecar__Device: GPU
     volumes:
       - /DATA/AppData/$$AppID/data:/data
     devices:
       # Expose the full Intel DRM stack so OpenVINO can reach renderD* and card* nodes.
-      - /dev/dri:/dev/dri   
+      - /dev/dri:/dev/dri
 
 x-casaos:
   architectures:

@@ -8,7 +8,7 @@
 - **Implicit usings** - Allowed for standard SDK ergonomics
 - **Docker** - Required deployment target for local and homelab environments
 - **Linux-first runtime support** - Backend must run correctly in Linux containers
-- Public container distribution may publish separate CPU, CUDA, OpenVino, and OpenVino GenAI image variants when they remain behaviorally equivalent aside from runtime acceleration dependencies
+- Public container distribution may publish separate CPU, CUDA, and OpenVino GenAI image variants when they remain behaviorally equivalent aside from runtime acceleration dependencies
 
 ## Homelab Hardware Assumptions
 - Target host baseline: **Intel i3-12100KF**, **16 GB RAM**, **Intel Arc A310 4 GB**
@@ -56,8 +56,13 @@
 - **Pluggable transcription engine abstraction** - Required integration boundary
 - **WhisperNet-based implementation** - Required default MVP engine family
 - **SherpaOnnx** via the official local **.NET runtime/package** is approved behind the engine abstraction; running it through an isolated helper worker process is allowed when needed for cancellation or runtime isolation
-- **Whisper.net** managed library with **Whisper.net.Runtime** (CPU), **Whisper.net.Runtime.Cuda** (NVIDIA GPU), and **Whisper.net.Runtime.OpenVino** (Intel GPU) runtimes are approved behind the engine abstraction, but CPU, CUDA, and OpenVino execution must run through isolated helper worker processes because Whisper.net runtime loading is process-global
+- **Whisper.net** managed library with **Whisper.net.Runtime** (CPU) and **Whisper.net.Runtime.Cuda** (NVIDIA GPU) runtimes are approved behind the engine abstraction, but CPU and CUDA execution must run through isolated helper worker processes because Whisper.net runtime loading is process-global
 - A separate **Python worker** backed by **openvino**, **openvino-tokenizers**, and **openvino-genai** is approved for a distinct Intel `OpenVinoGenAi` engine when it uses pre-exported public Whisper models, remains behind the same engine abstraction, and is packaged in a dedicated Intel OpenVINO runtime image rather than a plain ASP.NET runtime image
+- A separate **Python FastAPI sidecar** backed by **openvino-genai**, **fastapi**, and **uvicorn** is approved for the `OpenVinoWhisperSidecar` engine; the sidecar runs as a long-lived localhost HTTP server managed by the API process (spawned lazily on first use, killed on shutdown), caches loaded Whisper models in memory between jobs, and avoids the native library version conflict between the .NET `Whisper.net.Runtime.OpenVino` binding and newer OpenVINO Python package installs; the sidecar exposes an OpenAI-compatible `/v1/audio/transcriptions` endpoint plus a model management API with SSE-streamed download progress; it manages its own model downloads independently of the C# download infrastructure; the C# engine communicates with it via `ISpeechToTextClient` from `Microsoft.Extensions.AI.Abstractions`
+- **Microsoft.Extensions.AI.Abstractions** is approved as an internal calling abstraction for HTTP-based transcription engines (`OpenVinoWhisperSidecar`, `OpenAiCompatible`); it is used as an implementation detail within the engine and must not replace `IRegisteredTranscriptionEngine` as the public engine contract; the `MEAI001` experimental diagnostic should be suppressed project-wide via `<NoWarn>` in the `.csproj` file when the package is added
+- A generic **`OpenAiCompatible`** proxy engine is approved that forwards transcription requests to any OpenAI-compatible `/v1/audio/transcriptions` endpoint; it shares HTTP multipart construction code with the `OpenVinoWhisperSidecar` client and is hidden from the engine selector when `BaseUrl` is not configured
+- An **`OnnxWhisper`** engine placeholder value is approved in the `TranscriptionEngine` enum; do not add `Microsoft.ML.OnnxRuntime` or any ONNX inference package until the full implementation is planned
+- SSE (Server-Sent Events) streaming is the approved pattern for long-running sidecar model download progress; the C# caller must consume the SSE stream until `status=complete` or `status=error`
 - Keep engine-specific logic behind a dedicated transcription service and engine interface
 - Speaker diarization may be implemented as a lightweight local post-processing step over prepared audio and transcript timestamps rather than a separate heavyweight external service
 

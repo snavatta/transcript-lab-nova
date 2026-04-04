@@ -49,6 +49,7 @@ public class SettingsEndpointTests : IAsyncLifetime
             defaultLanguageCode = "es",
             defaultAudioNormalizationEnabled = false,
             defaultDiarizationEnabled = true,
+            defaultDiarizationMode = "Basic",
             defaultTranscriptViewMode = "Timestamped"
         };
 
@@ -73,6 +74,7 @@ public class SettingsEndpointTests : IAsyncLifetime
             defaultLanguageCode = (string?)null,
             defaultAudioNormalizationEnabled = true,
             defaultDiarizationEnabled = false,
+            defaultDiarizationMode = "Basic",
             defaultTranscriptViewMode = "Readable"
         };
 
@@ -96,6 +98,7 @@ public class SettingsEndpointTests : IAsyncLifetime
             defaultLanguageCode = (string?)null,
             defaultAudioNormalizationEnabled = true,
             defaultDiarizationEnabled = false,
+            defaultDiarizationMode = "Basic",
             defaultTranscriptViewMode = "Readable"
         };
 
@@ -229,6 +232,7 @@ public class SettingsEndpointTests : IAsyncLifetime
             defaultLanguageCode = (string?)null,
             defaultAudioNormalizationEnabled = true,
             defaultDiarizationEnabled = false,
+            defaultDiarizationMode = "Basic",
             defaultTranscriptViewMode = "Readable"
         };
 
@@ -252,6 +256,7 @@ public class SettingsEndpointTests : IAsyncLifetime
             defaultLanguageCode = (string?)null,
             defaultAudioNormalizationEnabled = true,
             defaultDiarizationEnabled = false,
+            defaultDiarizationMode = "Basic",
             defaultTranscriptViewMode = "Readable"
         };
 
@@ -275,6 +280,7 @@ public class SettingsEndpointTests : IAsyncLifetime
             defaultLanguageCode = (string?)null,
             defaultAudioNormalizationEnabled = true,
             defaultDiarizationEnabled = false,
+            defaultDiarizationMode = "Basic",
             defaultTranscriptViewMode = "Readable"
         };
 
@@ -298,6 +304,7 @@ public class SettingsEndpointTests : IAsyncLifetime
             defaultLanguageCode = "es",
             defaultAudioNormalizationEnabled = true,
             defaultDiarizationEnabled = false,
+            defaultDiarizationMode = "Basic",
             defaultTranscriptViewMode = "Readable",
         });
 
@@ -340,6 +347,7 @@ public class SettingsEndpointTests : IAsyncLifetime
             defaultLanguageCode = (string?)null,
             defaultAudioNormalizationEnabled = true,
             defaultDiarizationEnabled = false,
+            defaultDiarizationMode = "Basic",
             defaultTranscriptViewMode = "Readable",
         });
 

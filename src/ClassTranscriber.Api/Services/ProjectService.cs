@@ -142,6 +142,7 @@ public class ProjectService : IProjectService
                 LanguageCode = normalizedSettings.LanguageCode,
                 AudioNormalizationEnabled = normalizedSettings.AudioNormalizationEnabled,
                 DiarizationEnabled = normalizedSettings.DiarizationEnabled,
+                DiarizationMode = normalizedSettings.DiarizationMode,
             };
         }
 
@@ -264,6 +265,7 @@ public class ProjectService : IProjectService
                 LanguageCode = p.Settings.LanguageCode,
                 AudioNormalizationEnabled = p.Settings.AudioNormalizationEnabled,
                 DiarizationEnabled = p.Settings.DiarizationEnabled,
+                DiarizationMode = p.Settings.DiarizationMode,
             },
             MediaUrl = $"/api/projects/{p.Id}/media",
             AudioPreviewUrl = audioPreviewRelativePath is not null ? $"/api/projects/{p.Id}/audio" : null,
@@ -327,6 +329,7 @@ public class ProjectService : IProjectService
             LanguageCode = NormalizeLanguageCode(settings.LanguageCode),
             AudioNormalizationEnabled = settings.AudioNormalizationEnabled,
             DiarizationEnabled = settings.DiarizationEnabled,
+            DiarizationMode = NormalizeDiarizationMode(settings.DiarizationMode),
         };
 
         if (string.IsNullOrWhiteSpace(normalized.Engine) || !_engineRegistry.IsSupportedEngine(normalized.Engine))
@@ -354,6 +357,9 @@ public class ProjectService : IProjectService
                     : $"Unsupported fixed language for engine {normalized.Engine}. Supported fixed languages: {supportedLanguages}.");
         }
 
+        if (normalized.DiarizationMode is not ("Basic" or "Improved"))
+            throw new ArgumentException("Invalid diarization mode.");
+
         return normalized with
         {
             LanguageCode = normalized.LanguageMode == "Fixed" ? normalized.LanguageCode : null,
@@ -362,6 +368,9 @@ public class ProjectService : IProjectService
 
     private static string NormalizeLanguageMode(string? languageMode)
         => string.Equals(languageMode?.Trim(), "Fixed", StringComparison.OrdinalIgnoreCase) ? "Fixed" : "Auto";
+
+    private static string NormalizeDiarizationMode(string? mode)
+        => string.Equals(mode?.Trim(), "Improved", StringComparison.OrdinalIgnoreCase) ? "Improved" : "Basic";
 
     private static string? NormalizeLanguageCode(string? languageCode)
     {

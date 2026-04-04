@@ -95,6 +95,7 @@ public class UploadService : IUploadService
                     LanguageCode = effectiveSettings.LanguageCode,
                     AudioNormalizationEnabled = effectiveSettings.AudioNormalizationEnabled,
                     DiarizationEnabled = effectiveSettings.DiarizationEnabled,
+                    DiarizationMode = effectiveSettings.DiarizationMode,
                 },
             };
 
@@ -145,6 +146,7 @@ public class UploadService : IUploadService
             LanguageCode = string.IsNullOrWhiteSpace(effectiveSettings.LanguageCode) ? null : effectiveSettings.LanguageCode.Trim(),
             AudioNormalizationEnabled = effectiveSettings.AudioNormalizationEnabled,
             DiarizationEnabled = effectiveSettings.DiarizationEnabled,
+            DiarizationMode = NormalizeDiarizationMode(effectiveSettings.DiarizationMode),
         };
     }
 
@@ -166,6 +168,7 @@ public class UploadService : IUploadService
             LanguageCode = languageCode,
             AudioNormalizationEnabled = defaults.DefaultAudioNormalizationEnabled,
             DiarizationEnabled = defaults.DefaultDiarizationEnabled,
+            DiarizationMode = defaults.DefaultDiarizationMode,
         };
     }
 
@@ -199,6 +202,9 @@ public class UploadService : IUploadService
 
     private static string NormalizeLanguageMode(string languageMode)
         => languageMode.Trim().Equals("Fixed", StringComparison.OrdinalIgnoreCase) ? "Fixed" : "Auto";
+
+    private static string NormalizeDiarizationMode(string mode)
+        => mode.Trim().Equals("Improved", StringComparison.OrdinalIgnoreCase) ? "Improved" : "Basic";
 
     private static string ResolveProjectName(string? requestedProjectName, string originalFileName)
     {

@@ -11,8 +11,6 @@ public sealed class WhisperNetOptions
     public string ModelDownloadBaseUrl { get; set; } = "https://huggingface.co/ggerganov/whisper.cpp/resolve/main";
     public string WorkerPath { get; set; } = "ClassTranscriber.WhisperNet.Worker.dll";
     public string DotNetHostPath { get; set; } = "dotnet";
-    public string OpenVinoDevice { get; set; } = "GPU";
-    public string? OpenVinoCachePath { get; set; }
 }
 
 public abstract class WhisperNetTranscriptionEngineBase : IRegisteredTranscriptionEngine
@@ -35,7 +33,7 @@ public abstract class WhisperNetTranscriptionEngineBase : IRegisteredTranscripti
 
     protected abstract WhisperNetWorkerMode WorkerMode { get; }
 
-    public IReadOnlyCollection<string> SupportedModels { get; } = ["tiny", "base", "small", "medium", "large"];
+    public IReadOnlyCollection<string> SupportedModels { get; } = ["tiny", "base", "small", "medium", "large", "large-v3-turbo"];
 
     public string? GetAvailabilityError()
     {
@@ -79,8 +77,6 @@ public abstract class WhisperNetTranscriptionEngineBase : IRegisteredTranscripti
             ModelsPath = Path.GetFullPath(_options.ModelsPath),
             AutoDownloadModels = _options.AutoDownloadModels,
             LogSegments = _options.LogSegments,
-            OpenVinoDevice = _options.OpenVinoDevice,
-            OpenVinoCachePath = ResolveOptionalPath(_options.OpenVinoCachePath),
         };
 
         _logger.LogInformation(
@@ -89,7 +85,7 @@ public abstract class WhisperNetTranscriptionEngineBase : IRegisteredTranscripti
             audioPath,
             settings.Model);
 
-        var response = await _workerRunner.RunAsync(request, _options.WorkerPath, _options.DotNetHostPath, ct);
+        var response = await _workerRunner.RunAsync(request, _options.WorkerPath, _options.DotNetHostPath, GetExtraLibraryDirectory(), ct);
 
         _logger.LogInformation(
             "{Engine} transcription completed: {SegmentCount} segments, language={Language}",
@@ -113,6 +109,8 @@ public abstract class WhisperNetTranscriptionEngineBase : IRegisteredTranscripti
     }
 
     protected virtual string? GetAdditionalAvailabilityError() => null;
+
+    protected virtual string? GetExtraLibraryDirectory() => null;
 
     protected virtual string? GetExecutionPreflightError() => null;
 }
@@ -154,24 +152,4 @@ public sealed class WhisperNetCudaTranscriptionEngine : WhisperNetTranscriptionE
         => _cudaEnvironmentProbe.GetAvailabilityError();
 }
 
-public sealed class WhisperNetOpenVinoTranscriptionEngine : WhisperNetTranscriptionEngineBase
-{
-    private readonly IOpenVinoEnvironmentProbe _openVinoEnvironmentProbe;
 
-    public WhisperNetOpenVinoTranscriptionEngine(
-        IOptions<WhisperNetOptions> options,
-        IWhisperNetWorkerRunner workerRunner,
-        IOpenVinoEnvironmentProbe openVinoEnvironmentProbe,
-        ILogger<WhisperNetOpenVinoTranscriptionEngine> logger)
-        : base(options, workerRunner, logger)
-    {
-        _openVinoEnvironmentProbe = openVinoEnvironmentProbe;
-    }
-
-    public override string EngineId => "WhisperNetOpenVino";
-
-    protected override WhisperNetWorkerMode WorkerMode => WhisperNetWorkerMode.OpenVino;
-
-    protected override string? GetExecutionPreflightError()
-        => _openVinoEnvironmentProbe.GetAvailabilityError();
-}

@@ -206,7 +206,7 @@ public class TranscriptionPipelineTests : IAsyncLifetime
     {
         var folderId = await CreateFolder("Override Test Folder");
 
-        var settings = new { engine = "WhisperNet", model = "base", languageMode = "Fixed", languageCode = "en", audioNormalizationEnabled = false, diarizationEnabled = false };
+        var settings = new { engine = "WhisperNet", model = "base", languageMode = "Fixed", languageCode = "en", audioNormalizationEnabled = false, diarizationEnabled = false, diarizationMode = "Basic" };
         var settingsJson = JsonSerializer.Serialize(settings);
 
         using var content = new MultipartFormDataContent();
@@ -243,6 +243,7 @@ public class TranscriptionPipelineTests : IAsyncLifetime
             defaultLanguageCode = "es",
             defaultAudioNormalizationEnabled = false,
             defaultDiarizationEnabled = true,
+            defaultDiarizationMode = "Basic",
             defaultTranscriptViewMode = "Timestamped",
         });
         updateResponse.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -290,7 +291,7 @@ public class TranscriptionPipelineTests : IAsyncLifetime
     {
         var folderId = await CreateFolder("Sherpa Upload Folder");
 
-        var settings = new { engine = "SherpaOnnx", model = "small", languageMode = "Auto", languageCode = (string?)null, audioNormalizationEnabled = true, diarizationEnabled = false };
+        var settings = new { engine = "SherpaOnnx", model = "small", languageMode = "Auto", languageCode = (string?)null, audioNormalizationEnabled = true, diarizationEnabled = false, diarizationMode = "Basic" };
         var settingsJson = JsonSerializer.Serialize(settings);
 
         using var content = new MultipartFormDataContent();
@@ -317,7 +318,7 @@ public class TranscriptionPipelineTests : IAsyncLifetime
     {
         var folderId = await CreateFolder("SenseVoice Upload Folder");
 
-        var settings = new { engine = "SherpaOnnxSenseVoice", model = "small", languageMode = "Auto", languageCode = (string?)null, audioNormalizationEnabled = true, diarizationEnabled = false };
+        var settings = new { engine = "SherpaOnnxSenseVoice", model = "small", languageMode = "Auto", languageCode = (string?)null, audioNormalizationEnabled = true, diarizationEnabled = false, diarizationMode = "Basic" };
         var settingsJson = JsonSerializer.Serialize(settings);
 
         using var content = new MultipartFormDataContent();
@@ -344,7 +345,7 @@ public class TranscriptionPipelineTests : IAsyncLifetime
     {
         var folderId = await CreateFolder("WhisperNet CUDA Upload Folder");
 
-        var settings = new { engine = "WhisperNetCuda", model = "small", languageMode = "Auto", languageCode = (string?)null, audioNormalizationEnabled = true, diarizationEnabled = false };
+        var settings = new { engine = "WhisperNetCuda", model = "small", languageMode = "Auto", languageCode = (string?)null, audioNormalizationEnabled = true, diarizationEnabled = false, diarizationMode = "Basic" };
         var response = await UploadWithSettingsAsync(folderId, settings);
 
         response.StatusCode.Should().Be(HttpStatusCode.OK);
@@ -362,7 +363,7 @@ public class TranscriptionPipelineTests : IAsyncLifetime
     {
         var folderId = await CreateFolder("Bad SenseVoice Language Folder");
 
-        var settings = new { engine = "SherpaOnnxSenseVoice", model = "small", languageMode = "Fixed", languageCode = "es", audioNormalizationEnabled = true, diarizationEnabled = false };
+        var settings = new { engine = "SherpaOnnxSenseVoice", model = "small", languageMode = "Fixed", languageCode = "es", audioNormalizationEnabled = true, diarizationEnabled = false, diarizationMode = "Basic" };
         var response = await UploadWithSettingsAsync(folderId, settings);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -375,7 +376,7 @@ public class TranscriptionPipelineTests : IAsyncLifetime
     {
         var folderId = await CreateFolder("Bad Sherpa Upload Folder");
 
-        var settings = new { engine = "SherpaOnnx", model = "tiny", languageMode = "Auto", languageCode = (string?)null, audioNormalizationEnabled = true, diarizationEnabled = false };
+        var settings = new { engine = "SherpaOnnx", model = "tiny", languageMode = "Auto", languageCode = (string?)null, audioNormalizationEnabled = true, diarizationEnabled = false, diarizationMode = "Basic" };
         var settingsJson = JsonSerializer.Serialize(settings);
 
         using var content = new MultipartFormDataContent();
@@ -395,7 +396,7 @@ public class TranscriptionPipelineTests : IAsyncLifetime
     {
         var folderId = await CreateFolder("Bad Language Mode Folder");
 
-        var settings = new { engine = "WhisperNet", model = "small", languageMode = "Unknown", languageCode = (string?)null, audioNormalizationEnabled = true, diarizationEnabled = false };
+        var settings = new { engine = "WhisperNet", model = "small", languageMode = "Unknown", languageCode = (string?)null, audioNormalizationEnabled = true, diarizationEnabled = false, diarizationMode = "Basic" };
         var response = await UploadWithSettingsAsync(folderId, settings);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -406,7 +407,7 @@ public class TranscriptionPipelineTests : IAsyncLifetime
     {
         var folderId = await CreateFolder("Missing Language Code Folder");
 
-        var settings = new { engine = "WhisperNet", model = "small", languageMode = "Fixed", languageCode = (string?)null, audioNormalizationEnabled = true, diarizationEnabled = false };
+        var settings = new { engine = "WhisperNet", model = "small", languageMode = "Fixed", languageCode = (string?)null, audioNormalizationEnabled = true, diarizationEnabled = false, diarizationMode = "Basic" };
         var response = await UploadWithSettingsAsync(folderId, settings);
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
@@ -513,6 +514,7 @@ public class TranscriptionPipelineTests : IAsyncLifetime
                 languageCode = "en",
                 audioNormalizationEnabled = false,
                 diarizationEnabled = true,
+                diarizationMode = "Basic",
             },
         });
 
@@ -547,6 +549,7 @@ public class TranscriptionPipelineTests : IAsyncLifetime
                 languageCode = (string?)null,
                 audioNormalizationEnabled = true,
                 diarizationEnabled = false,
+                diarizationMode = "Basic",
             },
         });
 

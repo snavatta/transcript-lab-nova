@@ -14,7 +14,8 @@
         "ASPNETCORE_ENVIRONMENT": "Development",
         "ASPNETCORE_URLS": "http://localhost:5000",
         "Storage__BasePath": "${workspaceFolder}/data",
-        "ConnectionStrings__DefaultConnection": "Data Source=${workspaceFolder}/data/transcriptlab.db"
+        "ConnectionStrings__DefaultConnection": "Data Source=${workspaceFolder}/data/transcriptlab.db",
+        "PATH": "${workspaceFolder}/data/venvs/openvino-whisper/bin:${env:PATH}"
       },
       "console": "integratedTerminal"
     },

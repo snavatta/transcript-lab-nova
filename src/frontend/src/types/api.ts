@@ -54,6 +54,7 @@ export interface ProjectSettingsDto {
   languageCode: string | null;
   audioNormalizationEnabled: boolean;
   diarizationEnabled: boolean;
+  diarizationMode: string;
 }
 
 export interface UpdateProjectRequest {
@@ -145,6 +146,7 @@ export interface GlobalSettingsDto {
   defaultLanguageCode: string | null;
   defaultAudioNormalizationEnabled: boolean;
   defaultDiarizationEnabled: boolean;
+  defaultDiarizationMode: string;
   defaultTranscriptViewMode: TranscriptViewMode;
 }
 
@@ -222,6 +224,7 @@ export interface UpdateGlobalSettingsRequest {
   defaultLanguageCode: string | null;
   defaultAudioNormalizationEnabled: boolean;
   defaultDiarizationEnabled: boolean;
+  defaultDiarizationMode: string;
   defaultTranscriptViewMode: TranscriptViewMode;
 }
 

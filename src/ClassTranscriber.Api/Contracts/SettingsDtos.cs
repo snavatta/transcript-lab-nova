@@ -8,6 +8,7 @@ public sealed record GlobalSettingsDto
     public string? DefaultLanguageCode { get; init; }
     public required bool DefaultAudioNormalizationEnabled { get; init; }
     public required bool DefaultDiarizationEnabled { get; init; }
+    public required string DefaultDiarizationMode { get; init; }
     public required string DefaultTranscriptViewMode { get; init; }
 }
 
@@ -55,5 +56,6 @@ public sealed record UpdateGlobalSettingsRequest
     public string? DefaultLanguageCode { get; init; }
     public required bool DefaultAudioNormalizationEnabled { get; init; }
     public required bool DefaultDiarizationEnabled { get; init; }
+    public required string DefaultDiarizationMode { get; init; }
     public required string DefaultTranscriptViewMode { get; init; }
 }

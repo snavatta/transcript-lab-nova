@@ -3,6 +3,7 @@ using System.Text;
 using ClassTranscriber.Api.Contracts;
 using ClassTranscriber.Api.Domain;
 using ClassTranscriber.Api.Transcription;
+using ClassTranscriber.Api.Transcription.SpeechToText;
 using Microsoft.Extensions.Options;
 
 namespace ClassTranscriber.Api.Services;
@@ -22,32 +23,44 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
     {
         "WhisperNet",
         "WhisperNetCuda",
-        "WhisperNetOpenVino",
         "OpenVinoGenAi",
+        "OpenVinoWhisperSidecar",
     };
     private readonly Dictionary<string, IRegisteredTranscriptionEngine> _engines;
     private readonly WhisperNetOptions _whisperNetOptions;
     private readonly OpenVinoGenAiOptions _openVinoGenAiOptions;
+    private readonly OpenVinoWhisperSidecarOptions _openVinoWhisperSidecarOptions;
+    private readonly OpenAiCompatibleOptions _openAiCompatibleOptions;
     private readonly SherpaOnnxOptions _sherpaOnnxOptions;
     private readonly SherpaOnnxSenseVoiceOptions _sherpaOnnxSenseVoiceOptions;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly IOpenVinoWhisperSidecarManager _openVinoWhisperSidecarManager;
+    private readonly IOpenVinoSidecarModelManager _openVinoSidecarModelManager;
     private readonly ILogger<TranscriptionModelManagerService> _logger;
 
     public TranscriptionModelManagerService(
         IEnumerable<IRegisteredTranscriptionEngine> engines,
         IOptions<WhisperNetOptions> whisperNetOptions,
         IOptions<OpenVinoGenAiOptions> openVinoGenAiOptions,
+        IOptions<OpenVinoWhisperSidecarOptions> openVinoWhisperSidecarOptions,
+        IOptions<OpenAiCompatibleOptions> openAiCompatibleOptions,
         IOptions<SherpaOnnxOptions> sherpaOnnxOptions,
         IOptions<SherpaOnnxSenseVoiceOptions> sherpaOnnxSenseVoiceOptions,
         IHttpClientFactory httpClientFactory,
+        IOpenVinoWhisperSidecarManager openVinoWhisperSidecarManager,
+        IOpenVinoSidecarModelManager openVinoSidecarModelManager,
         ILogger<TranscriptionModelManagerService> logger)
     {
         _engines = engines.ToDictionary(engine => engine.EngineId, StringComparer.OrdinalIgnoreCase);
         _whisperNetOptions = whisperNetOptions.Value;
         _openVinoGenAiOptions = openVinoGenAiOptions.Value;
+        _openVinoWhisperSidecarOptions = openVinoWhisperSidecarOptions.Value;
+        _openAiCompatibleOptions = openAiCompatibleOptions.Value;
         _sherpaOnnxOptions = sherpaOnnxOptions.Value;
         _sherpaOnnxSenseVoiceOptions = sherpaOnnxSenseVoiceOptions.Value;
         _httpClientFactory = httpClientFactory;
+        _openVinoWhisperSidecarManager = openVinoWhisperSidecarManager;
+        _openVinoSidecarModelManager = openVinoSidecarModelManager;
         _logger = logger;
     }
 
@@ -85,7 +98,7 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
                 if (registration.IsInstalled)
                     throw new InvalidOperationException($"Model {engine} / {model} is already installed. Use Redownload to refresh it.");
 
-                await registration.DownloadAsync(ct);
+                await registration.DownloadAsync!(ct);
                 break;
 
             case "redownload":
@@ -93,7 +106,7 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
                     throw new InvalidOperationException($"Model redownload is not supported for {engine} / {model}.");
 
                 DeleteInstalledModel(registration);
-                await registration.DownloadAsync(ct);
+                await registration.DownloadAsync!(ct);
                 break;
 
             case "probe":
@@ -220,6 +233,7 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
                     LanguageCode = null,
                     AudioNormalizationEnabled = false,
                     DiarizationEnabled = false,
+                    DiarizationMode = "Basic",
                 },
                 timeout.Token);
 
@@ -263,16 +277,26 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
                 yield return CreateRegistration("WhisperNetCuda", model);
         }
 
-        if (_engines.ContainsKey("WhisperNetOpenVino"))
-        {
-            foreach (var model in GgmlModels)
-                yield return CreateRegistration("WhisperNetOpenVino", model);
-        }
-
         if (_engines.ContainsKey("OpenVinoGenAi"))
         {
             foreach (var model in OpenVinoGenAiModelCatalog.SupportedModels)
                 yield return CreateRegistration("OpenVinoGenAi", model);
+        }
+
+        if (_engines.ContainsKey("OpenVinoWhisperSidecar"))
+        {
+            foreach (var model in OpenVinoGenAiModelCatalog.SupportedModels)
+                yield return CreateRegistration("OpenVinoWhisperSidecar", model);
+        }
+
+        // OnnxWhisper has no supported models yet — it is a stub placeholder only.
+
+        // OpenAiCompatible is shown only when BaseUrl is configured.
+        if (_engines.ContainsKey("OpenAiCompatible")
+            && !string.IsNullOrWhiteSpace(_openAiCompatibleOptions.BaseUrl)
+            && !string.IsNullOrWhiteSpace(_openAiCompatibleOptions.ModelName))
+        {
+            yield return CreateRegistration("OpenAiCompatible", _openAiCompatibleOptions.ModelName);
         }
 
         if (_engines.ContainsKey("SherpaOnnx"))
@@ -293,8 +317,9 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
         {
             "WhisperNet" => CreateGgmlRegistration(engine, model, _whisperNetOptions.ModelsPath),
             "WhisperNetCuda" => CreateGgmlRegistration(engine, model, _whisperNetOptions.ModelsPath),
-            "WhisperNetOpenVino" => CreateGgmlRegistration(engine, model, _whisperNetOptions.ModelsPath),
             "OpenVinoGenAi" => CreateOpenVinoGenAiRegistration(engine, model),
+            "OpenVinoWhisperSidecar" => CreateOpenVinoWhisperSidecarRegistration(engine, model),
+            "OpenAiCompatible" => CreateOpenAiCompatibleRegistration(engine, model),
             "SherpaOnnx" => CreateSherpaRegistration(engine, model, _sherpaOnnxOptions.ModelsPath, _sherpaOnnxOptions.ModelDownloadBaseUrl, SherpaOnnxWhisperModelDownloadCatalog.TryGet),
             "SherpaOnnxSenseVoice" => CreateSherpaRegistration(engine, model, _sherpaOnnxSenseVoiceOptions.ModelsPath, _sherpaOnnxSenseVoiceOptions.ModelDownloadBaseUrl, SherpaOnnxSenseVoiceModelDownloadCatalog.TryGet),
             _ => throw new InvalidOperationException($"Unsupported managed engine '{engine}'."),
@@ -373,8 +398,43 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
             ValidateInstalledAssets: () => OpenVinoGenAiModelDownloads.ValidateInstalledModel(installPath, definition));
     }
 
+    private ManagedModelRegistration CreateOpenVinoWhisperSidecarRegistration(string engine, string model)
+    {
+        var definition = OpenVinoGenAiModelCatalog.GetRequired(model);
+        var installPath = OpenVinoGenAiModelDownloads.GetModelDirectory(_openVinoWhisperSidecarOptions.ModelsPath, model);
+        return new ManagedModelRegistration(
+            engine,
+            model,
+            installPath,
+            Directory.Exists(installPath),
+            true,
+            DownloadAsync: async downloadCt =>
+            {
+                // Start the sidecar first (if not already running), then delegate download to it
+                await _openVinoWhisperSidecarManager.EnsureStartedAsync(downloadCt);
+                await _openVinoSidecarModelManager.EnsureModelInstalledAsync(model, downloadCt);
+            },
+            ValidateInstalledAssets: () => OpenVinoGenAiModelDownloads.ValidateInstalledModel(installPath, definition));
+    }
+
+    private static ManagedModelRegistration CreateOpenAiCompatibleRegistration(string engine, string model)
+    {
+        // OpenAiCompatible uses a remote API — no local install or download needed.
+        return new ManagedModelRegistration(
+            engine,
+            model,
+            InstallPath: null,
+            IsInstalled: true,
+            CanDownload: false,
+            DownloadAsync: null,
+            ValidateInstalledAssets: null);
+    }
+
     private static void DeleteInstalledModel(ManagedModelRegistration registration)
     {
+        if (registration.InstallPath is null)
+            return;
+
         if (File.Exists(registration.InstallPath))
         {
             File.Delete(registration.InstallPath);
@@ -419,10 +479,10 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
     private sealed record ManagedModelRegistration(
         string Engine,
         string Model,
-        string InstallPath,
+        string? InstallPath,
         bool IsInstalled,
         bool CanDownload,
-        Func<CancellationToken, Task> DownloadAsync,
+        Func<CancellationToken, Task>? DownloadAsync,
         Action? ValidateInstalledAssets);
 
     private sealed record ModelProbeResult(string State, string Message);

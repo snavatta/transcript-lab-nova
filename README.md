@@ -33,7 +33,7 @@ Implementation is underway. Phases 1-3 (scaffold, shared contracts, backend foun
 
 ## Target Host
 
-- Intel i3-12100KF
+- Intel i3-12100F
 - 16 GB RAM
 - Intel Arc A310 4 GB
 
@@ -72,7 +72,7 @@ MIT
 ### Prerequisites
 
 - .NET 10 SDK
-- Node.js 22 LTS
+- Node.js 24 LTS
 - npm
 - FFmpeg (for media processing)
 

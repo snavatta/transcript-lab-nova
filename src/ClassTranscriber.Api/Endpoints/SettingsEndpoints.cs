@@ -64,6 +64,7 @@ public static class SettingsEndpoints
         {
             var validLanguageModes = new[] { "Auto", "Fixed" };
             var validViewModes = new[] { "Readable", "Timestamped" };
+            var validDiarizationModes = new[] { "Basic", "Improved" };
 
             if (!engineRegistry.IsSupportedEngine(request.DefaultEngine))
                 return Results.BadRequest(new ErrorResponse("validation_error", "Unsupported engine."));
@@ -93,6 +94,9 @@ public static class SettingsEndpoints
 
             if (!validViewModes.Contains(request.DefaultTranscriptViewMode))
                 return Results.BadRequest(new ErrorResponse("validation_error", "Invalid transcript view mode."));
+
+            if (!validDiarizationModes.Contains(request.DefaultDiarizationMode))
+                return Results.BadRequest(new ErrorResponse("validation_error", "Invalid diarization mode."));
 
             var settings = await service.UpdateAsync(request, ct);
             return Results.Ok(settings);

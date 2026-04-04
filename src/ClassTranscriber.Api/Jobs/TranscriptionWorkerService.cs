@@ -229,7 +229,7 @@ public class TranscriptionWorkerService : BackgroundService, IActiveJobCancellat
                 {
                     result = result with
                     {
-                        Segments = _speakerDiarizer.AssignSpeakers(preparedAudioPath, result.Segments, jobToken),
+                        Segments = _speakerDiarizer.AssignSpeakers(preparedAudioPath, result.Segments, project.Settings.DiarizationMode, jobToken),
                     };
                 }
                 catch (OperationCanceledException)

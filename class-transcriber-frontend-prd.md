@@ -532,7 +532,7 @@ The app must expose a global settings page for future uploads.
 - changing settings does not retroactively modify existing projects
 - upload modal should start from global defaults but allow override per batch
 - batch and retry flows should allow diarization to be enabled or disabled per request
-- engine selectors in settings, upload, retry, diagnostics, and model management should surface runtime-available engines from the backend, including separate Intel options such as `WhisperNetOpenVino` and `OpenVinoGenAi` when those runtimes are installed
+- engine selectors in settings, upload, retry, diagnostics, and model management should surface runtime-available engines from the backend, including separate Intel options such as `OpenVinoGenAi` when that runtime is installed
 - the settings page should also expose a model manager below the defaults form in a vertical stack layout
 - the model manager should show known engine/model combinations, local install state, install path, and the latest probe result
 - installed models should be probed on page load so runtime problems are visible without queueing an upload

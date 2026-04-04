@@ -48,6 +48,7 @@ public class AppDbContext : DbContext
                 settings.Property(s => s.Model).HasMaxLength(50);
                 settings.Property(s => s.LanguageMode).HasMaxLength(20);
                 settings.Property(s => s.LanguageCode).HasMaxLength(20);
+                settings.Property(s => s.DiarizationMode).HasMaxLength(20);
             });
 
             entity.HasOne(e => e.Transcript).WithOne(t => t.Project).HasForeignKey<Transcript>(t => t.ProjectId);
@@ -67,6 +68,7 @@ public class AppDbContext : DbContext
             entity.Property(e => e.DefaultLanguageMode).HasMaxLength(20);
             entity.Property(e => e.DefaultLanguageCode).HasMaxLength(20);
             entity.Property(e => e.DefaultTranscriptViewMode).HasMaxLength(20);
+            entity.Property(e => e.DefaultDiarizationMode).HasMaxLength(20);
 
             entity.HasData(new GlobalSettings());
         });

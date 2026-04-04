@@ -68,6 +68,11 @@ namespace ClassTranscriber.Api.Persistence.Migrations
                     b.Property<bool>("DefaultDiarizationEnabled")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("DefaultDiarizationMode")
+                        .IsRequired()
+                        .HasMaxLength(20)
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("DefaultEngine")
                         .IsRequired()
                         .HasMaxLength(50)
@@ -102,6 +107,7 @@ namespace ClassTranscriber.Api.Persistence.Migrations
                             Id = 1,
                             DefaultAudioNormalizationEnabled = true,
                             DefaultDiarizationEnabled = false,
+                            DefaultDiarizationMode = "Basic",
                             DefaultEngine = "WhisperNet",
                             DefaultLanguageMode = "Auto",
                             DefaultModel = "small",
@@ -274,6 +280,11 @@ namespace ClassTranscriber.Api.Persistence.Migrations
 
                             b1.Property<bool>("DiarizationEnabled")
                                 .HasColumnType("INTEGER");
+
+                            b1.Property<string>("DiarizationMode")
+                                .IsRequired()
+                                .HasMaxLength(20)
+                                .HasColumnType("TEXT");
 
                             b1.Property<string>("Engine")
                                 .IsRequired()

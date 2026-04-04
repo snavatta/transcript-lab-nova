@@ -10,6 +10,7 @@ public sealed record ProjectSettingsDto
     public string? LanguageCode { get; init; }
     public required bool AudioNormalizationEnabled { get; init; }
     public required bool DiarizationEnabled { get; init; }
+    public required string DiarizationMode { get; init; }
 }
 
 public sealed record UpdateProjectRequest

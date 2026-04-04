@@ -10,6 +10,7 @@ using ClassTranscriber.Api.Persistence;
 using ClassTranscriber.Api.Services;
 using ClassTranscriber.Api.Storage;
 using ClassTranscriber.Api.Transcription;
+using ClassTranscriber.Api.Transcription.SpeechToText;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
@@ -41,7 +42,6 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
                 new NoOpTranscriptionEngine("SherpaOnnxSenseVoice", ["small"]),
                 new NoOpTranscriptionEngine("WhisperNet", ["tiny", "base", "small", "medium", "large"]),
                 new NoOpTranscriptionEngine("WhisperNetCuda", ["tiny", "base", "small", "medium", "large"]),
-                new NoOpTranscriptionEngine("WhisperNetOpenVino", ["tiny", "base", "small", "medium", "large"]),
                 new NoOpTranscriptionEngine("OpenVinoGenAi", ["base-int8", "small-fp16", "tiny-int8"]),
             ];
         var resolvedMaxRequestBodySizeBytes = maxRequestBodySizeBytes is > 0
@@ -119,13 +119,19 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
         {
             o.ModelsPath = Path.Combine(_storageBasePath, "models", "openvino-genai");
         });
+        builder.Services.Configure<OpenVinoWhisperSidecarOptions>(o =>
+        {
+            o.ModelsPath = Path.Combine(_storageBasePath, "models", "openvino-genai");
+        });
+        builder.Services.Configure<OpenAiCompatibleOptions>(_ => { });
 
         builder.Services.AddSingleton<IMediaInspector, NoOpMediaInspector>();
         builder.Services.AddSingleton<IAudioExtractor, NoOpAudioExtractor>();
         builder.Services.AddSingleton<IAudioNormalizer, NoOpAudioNormalizer>();
         builder.Services.AddSingleton<IActiveJobCancellation, NoOpActiveJobCancellation>();
         builder.Services.AddSingleton<ICudaEnvironmentProbe, CudaEnvironmentProbe>();
-        builder.Services.AddSingleton<IOpenVinoEnvironmentProbe, OpenVinoEnvironmentProbe>();
+        builder.Services.AddSingleton<IOpenVinoWhisperSidecarManager, NoOpOpenVinoWhisperSidecarManager>();
+        builder.Services.AddSingleton<IOpenVinoSidecarModelManager, NoOpOpenVinoSidecarModelManager>();
         foreach (var engine in _transcriptionEngines)
             builder.Services.AddSingleton<IRegisteredTranscriptionEngine>(engine);
         builder.Services.AddSingleton<ITranscriptionEngineRegistry, TranscriptionEngineRegistry>();
@@ -261,4 +267,21 @@ public class NoOpTranscriptionEngine(
             "en",
             60000
         ));
+}
+
+public class NoOpOpenVinoWhisperSidecarManager : IOpenVinoWhisperSidecarManager
+{
+    public string BaseUrl => "http://127.0.0.1:15432";
+
+    public Task EnsureStartedAsync(CancellationToken ct) => Task.CompletedTask;
+
+    public ValueTask DisposeAsync() => ValueTask.CompletedTask;
+}
+
+public class NoOpOpenVinoSidecarModelManager : IOpenVinoSidecarModelManager
+{
+    public Task EnsureModelInstalledAsync(string model, CancellationToken ct) => Task.CompletedTask;
+
+    public Task<IReadOnlyList<SidecarModelStatusDto>> ListModelsAsync(CancellationToken ct)
+        => Task.FromResult<IReadOnlyList<SidecarModelStatusDto>>([]);
 }

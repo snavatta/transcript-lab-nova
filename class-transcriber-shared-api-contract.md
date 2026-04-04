@@ -115,8 +115,10 @@ SherpaOnnx
 SherpaOnnxSenseVoice
 WhisperNet
 WhisperNetCuda
-WhisperNetOpenVino
 OpenVinoGenAi
+OpenVinoWhisperSidecar
+OnnxWhisper
+OpenAiCompatible
 ```
 
 Implementation note:
@@ -125,10 +127,12 @@ Implementation note:
   Current backend implementation only accepts fixed-language codes `zh`, `en`, `ja`, `ko`, and `yue` for this engine; `Auto` remains supported.
 - `WhisperNet` uses the Whisper.net managed library with CPU inference (Whisper.net.Runtime) through an isolated helper worker process so runtime selection is per job rather than process-global.
 - `WhisperNetCuda` uses the Whisper.net managed library with NVIDIA CUDA acceleration through the same isolated helper-worker model. Current backend implementation targets the stable `Whisper.net.Runtime.Cuda` runtime. Requires a supported NVIDIA GPU plus CUDA runtime libraries on the host/container.
-- `WhisperNetOpenVino` uses the Whisper.net managed library with Intel OpenVino acceleration (Whisper.net.Runtime.OpenVino) through the same isolated helper-worker model. Requires the OpenVino toolkit (>= 2024.4). Current backend implementation keeps the engine selectable when the helper worker is installed, then performs a runtime probe before each job and fails with a clear error if the host cannot load the required OpenVino libraries.
-- `OpenVinoGenAi` uses a separate isolated Python worker backed by `openvino_genai` and pre-exported public Whisper models. It is intentionally a separate engine from `WhisperNetOpenVino` because it targets a newer OpenVINO runtime/toolchain and is published in a separate image variant.
-- `WhisperNet`, `WhisperNetCuda`, and `WhisperNetOpenVino` use shared ggml model files and support auto-download.
-- `OpenVinoGenAi` uses curated pre-exported model directories under `models/openvino-genai/` and supports managed download/redownload/probe from the settings model manager.
+- `OpenVinoGenAi` uses a separate isolated Python worker backed by `openvino_genai` and pre-exported public Whisper models.
+- `OpenVinoWhisperSidecar` uses a long-lived Python FastAPI sidecar backed by `openvino_genai`. The sidecar exposes an OpenAI-compatible `/v1/audio/transcriptions` endpoint and a model management API. It caches loaded Whisper pipelines in memory between jobs and manages its own model downloads internally. The C# engine communicates with it via `ISpeechToTextClient` (Microsoft.Extensions.AI experimental). It is the recommended OpenVINO engine for deployments with a local GPU.
+- `OnnxWhisper` is a reserved placeholder for a future native .NET ONNX Whisper engine using `Microsoft.ML.OnnxRuntime`. It is not yet implemented and reports unavailable in all current releases.
+- `OpenAiCompatible` is a generic proxy engine that forwards transcription to any external service that exposes an OpenAI-compatible `/v1/audio/transcriptions` endpoint (e.g., the local `OpenVinoWhisperSidecar`, Whisper.cpp server, Ollama). It is hidden from the engine selector when `BaseUrl` is not configured.
+- `WhisperNet` and `WhisperNetCuda` use shared ggml model files and support auto-download.
+- `OpenVinoGenAi` and `OpenVinoWhisperSidecar` use curated pre-exported model directories under `models/openvino-genai/` and support managed download/redownload/probe from the settings model manager. For `OpenVinoWhisperSidecar` the download is proxied to the sidecar's own model management API.
 
 ## ModelName
 Suggested allowed values for MVP:
@@ -144,8 +148,8 @@ Current implementation note:
 - `SherpaOnnxSenseVoice` currently supports `small`
 - `WhisperNet` supports `tiny`, `base`, `small`, `medium`, `large`
 - `WhisperNetCuda` supports `tiny`, `base`, `small`, `medium`, `large`
-- `WhisperNetOpenVino` supports `tiny`, `base`, `small`, `medium`, `large`
-- `OpenVinoGenAi` supports `tiny-int8`, `base-int8`, `small-fp16`, with `base-int8` as the recommended Arc A310 default
+- `OpenVinoGenAi` supports `tiny-int8`, `tiny-fp16`, `base-int8`, `base-fp16`, `small-int8`, `small-fp16`, `medium-int8`, `medium-fp16`, `large-v3-int8`, `large-v3-fp16`, with `base-int8` as the recommended Arc A310 default
+- `OpenVinoWhisperSidecar` supports the same model set as `OpenVinoGenAi`
 
 ---
 
@@ -231,7 +235,8 @@ Validation:
   "languageMode": "Auto",
   "languageCode": null,
   "audioNormalizationEnabled": true,
-  "diarizationEnabled": false
+  "diarizationEnabled": false,
+  "diarizationMode": "Basic"
 }
 ```
 
@@ -242,6 +247,7 @@ Fields:
 - `languageCode: string | null`
 - `audioNormalizationEnabled: boolean`
 - `diarizationEnabled: boolean`
+- `diarizationMode: string` — `"Basic"` or `"Improved"`
 
 Rules:
 - if `languageMode` is `Auto`, `languageCode` may be null
@@ -366,7 +372,8 @@ Fields:
     "languageMode": "Auto",
     "languageCode": null,
     "audioNormalizationEnabled": true,
-    "diarizationEnabled": false
+    "diarizationEnabled": false,
+    "diarizationMode": "Basic"
   },
   "mediaUrl": "/api/projects/guid/media",
   "audioPreviewUrl": "/api/projects/guid/audio",
@@ -513,6 +520,7 @@ For MVP, recent completed/failed items are enough.
   "defaultLanguageCode": null,
   "defaultAudioNormalizationEnabled": true,
   "defaultDiarizationEnabled": false,
+  "defaultDiarizationMode": "Basic",
   "defaultTranscriptViewMode": "Readable"
 }
 ```
@@ -524,6 +532,7 @@ Fields:
 - `defaultLanguageCode: string | null`
 - `defaultAudioNormalizationEnabled: boolean`
 - `defaultDiarizationEnabled: boolean`
+- `defaultDiarizationMode: string` — `"Basic"` or `"Improved"`
 - `defaultTranscriptViewMode: string`
 
 ### UpdateGlobalSettingsRequest
@@ -689,7 +698,7 @@ Conceptual example:
 ```text
 folderId = c0c8f7e8-8730-4ff4-9215-39a71c7df1ae
 autoQueue = true
-settings = {"engine":"WhisperNet","model":"small","languageMode":"Auto","languageCode":null,"audioNormalizationEnabled":true,"diarizationEnabled":false}
+settings = {"engine":"WhisperNet","model":"small","languageMode":"Auto","languageCode":null,"audioNormalizationEnabled":true,"diarizationEnabled":false,"diarizationMode":"Basic"}
 files = [file1, file2]
 items = [{"originalFileName":"class01.mp4","projectName":"Biology Class 01"},{"originalFileName":"class02.mp4","projectName":"Biology Class 02"}]
 ```
@@ -871,7 +880,8 @@ Optional request body:
     "languageMode": "Auto",
     "languageCode": null,
     "audioNormalizationEnabled": true,
-    "diarizationEnabled": false
+    "diarizationEnabled": false,
+    "diarizationMode": "Basic"
   }
 }
 ```
@@ -1007,6 +1017,7 @@ Request:
   "defaultLanguageCode": null,
   "defaultAudioNormalizationEnabled": true,
   "defaultDiarizationEnabled": false,
+  "defaultDiarizationMode": "Basic",
   "defaultTranscriptViewMode": "Readable"
 }
 ```
@@ -1229,6 +1240,7 @@ export interface ProjectSettingsDto {
   languageCode: string | null;
   audioNormalizationEnabled: boolean;
   diarizationEnabled: boolean;
+  diarizationMode: string;
 }
 
 export interface TranscriptSegmentDto {
@@ -1316,6 +1328,7 @@ export interface GlobalSettingsDto {
   defaultLanguageCode: string | null;
   defaultAudioNormalizationEnabled: boolean;
   defaultDiarizationEnabled: boolean;
+  defaultDiarizationMode: string;
   defaultTranscriptViewMode: TranscriptViewMode;
 }
 

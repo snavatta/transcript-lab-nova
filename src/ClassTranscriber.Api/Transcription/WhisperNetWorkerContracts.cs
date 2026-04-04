@@ -6,7 +6,6 @@ public enum WhisperNetWorkerMode
 {
     Cpu,
     Cuda,
-    OpenVino,
 }
 
 public sealed record WhisperNetWorkerRequest
@@ -19,8 +18,6 @@ public sealed record WhisperNetWorkerRequest
     public required string ModelsPath { get; init; }
     public required bool AutoDownloadModels { get; init; }
     public required bool LogSegments { get; init; }
-    public required string OpenVinoDevice { get; init; }
-    public string? OpenVinoCachePath { get; init; }
 }
 
 public sealed record WhisperNetWorkerResponse

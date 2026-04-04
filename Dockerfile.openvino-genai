@@ -54,7 +54,9 @@ RUN python3 -m venv /opt/openvino-genai-venv \
         numpy \
         openvino==2025.4.1 \
         openvino-tokenizers==2025.4.1.0 \
-        openvino-genai==2025.4.1.0
+        openvino-genai==2025.4.1.0 \
+        "fastapi[standard]" \
+        uvicorn
 
 WORKDIR /app
 COPY --from=aspnet-runtime /usr/share/dotnet /usr/share/dotnet
@@ -70,6 +72,8 @@ ENV PYTHONUNBUFFERED=1
 ENV PATH=/opt/openvino-genai-venv/bin:${PATH}
 ENV Transcription__OpenVinoGenAi__PythonPath=/opt/openvino-genai-venv/bin/python
 ENV Transcription__OpenVinoGenAi__Device=GPU
+ENV Transcription__OpenVinoWhisperSidecar__PythonPath=/opt/openvino-genai-venv/bin/python
+ENV Transcription__OpenVinoWhisperSidecar__Device=GPU
 
 EXPOSE 5000
 VOLUME /data

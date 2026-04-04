@@ -5,7 +5,7 @@ namespace ClassTranscriber.Api.Transcription;
 
 public interface IWhisperNetWorkerRunner
 {
-    Task<WhisperNetWorkerResponse> RunAsync(WhisperNetWorkerRequest request, string workerPath, string? dotNetHostPath, CancellationToken ct = default);
+    Task<WhisperNetWorkerResponse> RunAsync(WhisperNetWorkerRequest request, string workerPath, string? dotNetHostPath, string? extraLibraryDirectory = null, CancellationToken ct = default);
 }
 
 public sealed class WhisperNetWorkerRunner : IWhisperNetWorkerRunner
@@ -24,9 +24,10 @@ public sealed class WhisperNetWorkerRunner : IWhisperNetWorkerRunner
         WhisperNetWorkerRequest request,
         string workerPath,
         string? dotNetHostPath,
+        string? extraLibraryDirectory = null,
         CancellationToken ct = default)
     {
-        var startInfo = CreateProcessStartInfo(workerPath, dotNetHostPath);
+        var startInfo = CreateProcessStartInfo(workerPath, dotNetHostPath, extraLibraryDirectory);
 
         using var process = new Process
         {
@@ -94,7 +95,7 @@ public sealed class WhisperNetWorkerRunner : IWhisperNetWorkerRunner
         }
     }
 
-    private static ProcessStartInfo CreateProcessStartInfo(string workerPath, string? dotNetHostPath)
+    private static ProcessStartInfo CreateProcessStartInfo(string workerPath, string? dotNetHostPath, string? extraLibraryDirectory)
     {
         var resolvedWorkerPath = ProcessPathResolver.ResolveWorkerPath(workerPath);
         var useDotNetHost = string.Equals(Path.GetExtension(resolvedWorkerPath), ".dll", StringComparison.OrdinalIgnoreCase);
@@ -105,7 +106,7 @@ public sealed class WhisperNetWorkerRunner : IWhisperNetWorkerRunner
             ? $"\"{resolvedWorkerPath}\""
             : string.Empty;
 
-        return new ProcessStartInfo
+        var startInfo = new ProcessStartInfo
         {
             FileName = fileName,
             Arguments = arguments,
@@ -115,6 +116,19 @@ public sealed class WhisperNetWorkerRunner : IWhisperNetWorkerRunner
             UseShellExecute = false,
             CreateNoWindow = true,
         };
+
+        if (!string.IsNullOrWhiteSpace(extraLibraryDirectory))
+        {
+            var ldPathVar = OperatingSystem.IsWindows() ? "PATH"
+                : OperatingSystem.IsMacOS() ? "DYLD_LIBRARY_PATH"
+                : "LD_LIBRARY_PATH";
+            var existing = Environment.GetEnvironmentVariable(ldPathVar);
+            startInfo.Environment[ldPathVar] = string.IsNullOrWhiteSpace(existing)
+                ? extraLibraryDirectory
+                : $"{extraLibraryDirectory}{Path.PathSeparator}{existing}";
+        }
+
+        return startInfo;
     }
 
     private static string ExtractResponsePayload(string stdout)

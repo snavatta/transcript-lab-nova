@@ -8,8 +8,11 @@ using ClassTranscriber.Api.Persistence;
 using ClassTranscriber.Api.Services;
 using ClassTranscriber.Api.Storage;
 using ClassTranscriber.Api.Transcription;
+using ClassTranscriber.Api.Transcription.SpeechToText;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.AI;
+using Microsoft.Extensions.Options;
 using Serilog;
 
 Log.Logger = new LoggerConfiguration()
@@ -60,6 +63,14 @@ try
         client.Timeout = Timeout.InfiniteTimeSpan;
     });
     builder.Services.AddHttpClient("OpenVinoGenAiModelDownloads", client =>
+    {
+        client.Timeout = Timeout.InfiniteTimeSpan;
+    });
+    builder.Services.AddHttpClient(OpenVinoWhisperSidecarManager.HttpClientName, client =>
+    {
+        client.Timeout = Timeout.InfiniteTimeSpan;
+    });
+    builder.Services.AddHttpClient("OpenVinoWhisperSidecarModelDownloads", client =>
     {
         client.Timeout = Timeout.InfiniteTimeSpan;
     });
@@ -172,8 +183,6 @@ try
             ?? o.ModelDownloadBaseUrl;
         o.WorkerPath = builder.Configuration["Transcription:WhisperNet:WorkerPath"] ?? o.WorkerPath;
         o.DotNetHostPath = builder.Configuration["Transcription:WhisperNet:DotNetHostPath"] ?? o.DotNetHostPath;
-        o.OpenVinoDevice = builder.Configuration["Transcription:WhisperNet:OpenVinoDevice"] ?? o.OpenVinoDevice;
-        o.OpenVinoCachePath = builder.Configuration["Transcription:WhisperNet:OpenVinoCachePath"];
     });
     builder.Services.Configure<OpenVinoGenAiOptions>(o =>
     {
@@ -198,14 +207,64 @@ try
         o.WorkerScriptPath = builder.Configuration["Transcription:OpenVinoGenAi:WorkerScriptPath"] ?? o.WorkerScriptPath;
         o.Device = builder.Configuration["Transcription:OpenVinoGenAi:Device"] ?? o.Device;
     });
+    builder.Services.Configure<OpenVinoWhisperSidecarOptions>(o =>
+    {
+        o.ModelsPath = builder.Configuration["Transcription:OpenVinoWhisperSidecar:ModelsPath"]
+            ?? builder.Configuration["Transcription:OpenVinoGenAi:ModelsPath"]
+            ?? Path.Combine(
+                builder.Configuration["Storage:BasePath"] ?? "/data",
+                builder.Configuration["Storage:ModelsPath"] ?? "models",
+                "openvino-genai");
+        if (bool.TryParse(
+                builder.Configuration["Transcription:OpenVinoWhisperSidecar:AutoDownloadModels"]
+                ?? builder.Configuration["Transcription:AutoDownloadModels"],
+                out var autoDownload))
+            o.AutoDownloadModels = autoDownload;
+        if (bool.TryParse(
+                builder.Configuration["Transcription:OpenVinoWhisperSidecar:LogSegments"]
+                ?? builder.Configuration["Transcription:LogSegments"],
+                out var logSegments))
+            o.LogSegments = logSegments;
+        o.ModelDownloadBaseUrl = builder.Configuration["Transcription:OpenVinoWhisperSidecar:ModelDownloadBaseUrl"]
+            ?? builder.Configuration["Transcription:OpenVinoGenAi:ModelDownloadBaseUrl"]
+            ?? o.ModelDownloadBaseUrl;
+        o.PythonPath = builder.Configuration["Transcription:OpenVinoWhisperSidecar:PythonPath"]
+            ?? builder.Configuration["Transcription:OpenVinoGenAi:PythonPath"]
+            ?? o.PythonPath;
+        o.ServerScriptPath = builder.Configuration["Transcription:OpenVinoWhisperSidecar:ServerScriptPath"] ?? o.ServerScriptPath;
+        o.Device = builder.Configuration["Transcription:OpenVinoWhisperSidecar:Device"]
+            ?? builder.Configuration["Transcription:OpenVinoGenAi:Device"]
+            ?? o.Device;
+        if (int.TryParse(builder.Configuration["Transcription:OpenVinoWhisperSidecar:Port"], out var port))
+            o.Port = port;
+        if (int.TryParse(builder.Configuration["Transcription:OpenVinoWhisperSidecar:StartupTimeoutSeconds"], out var timeout))
+            o.StartupTimeoutSeconds = timeout;
+    });
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, SherpaOnnxTranscriptionEngine>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, SherpaOnnxSenseVoiceTranscriptionEngine>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, WhisperNetCpuTranscriptionEngine>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, WhisperNetCudaTranscriptionEngine>();
-    builder.Services.AddSingleton<IRegisteredTranscriptionEngine, WhisperNetOpenVinoTranscriptionEngine>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, OpenVinoGenAiTranscriptionEngine>();
+    builder.Services.AddSingleton<IRegisteredTranscriptionEngine, OpenVinoWhisperSidecarTranscriptionEngine>();
+    builder.Services.AddSingleton<IOpenVinoWhisperSidecarManager, OpenVinoWhisperSidecarManager>();
+    builder.Services.AddSingleton<IOpenVinoWhisperSidecarEnvironmentProbe, OpenVinoWhisperSidecarEnvironmentProbe>();
+    builder.Services.AddSingleton<IOpenVinoSidecarModelManager, OpenVinoSidecarModelManager>();
+    builder.Services.AddKeyedSingleton<ISpeechToTextClient, OpenVinoSidecarSpeechToTextClient>("OpenVinoWhisperSidecar");
+    builder.Services.AddSingleton<IRegisteredTranscriptionEngine, OnnxWhisperTranscriptionEngine>();
+    builder.Services.Configure<OpenAiCompatibleOptions>(builder.Configuration.GetSection("Transcription:OpenAiCompatible"));
+    builder.Services.AddSingleton<IRegisteredTranscriptionEngine, OpenAiCompatibleTranscriptionEngine>();
+    builder.Services.AddKeyedSingleton<ISpeechToTextClient, OpenAiCompatibleSpeechToTextClient>("OpenAiCompatible");
+    builder.Services.AddHttpClient(OpenAiCompatibleTranscriptionEngine.HttpClientName, (sp, client) =>
+    {
+        var opts = sp.GetRequiredService<IOptions<OpenAiCompatibleOptions>>().Value;
+        if (!string.IsNullOrWhiteSpace(opts.BaseUrl))
+            client.BaseAddress = new Uri(opts.BaseUrl.TrimEnd('/') + "/");
+        client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds > 0 ? opts.TimeoutSeconds : 120);
+        if (!string.IsNullOrWhiteSpace(opts.ApiKey))
+            client.DefaultRequestHeaders.Authorization =
+                new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", opts.ApiKey);
+    });
     builder.Services.AddSingleton<ICudaEnvironmentProbe, CudaEnvironmentProbe>();
-    builder.Services.AddSingleton<IOpenVinoEnvironmentProbe, OpenVinoEnvironmentProbe>();
     builder.Services.AddSingleton<IOpenVinoGenAiEnvironmentProbe, OpenVinoGenAiEnvironmentProbe>();
     builder.Services.AddSingleton<ISherpaOnnxWorkerRunner, SherpaOnnxWorkerRunner>();
     builder.Services.AddSingleton<IWhisperNetWorkerRunner, WhisperNetWorkerRunner>();
@@ -242,9 +301,9 @@ try
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         await db.Database.MigrateAsync();
 
-        var openVinoProbe = scope.ServiceProvider.GetRequiredService<IOpenVinoEnvironmentProbe>();
-        var cudaProbe = scope.ServiceProvider.GetRequiredService<ICudaEnvironmentProbe>();
         var openVinoGenAiProbe = scope.ServiceProvider.GetRequiredService<IOpenVinoGenAiEnvironmentProbe>();
+        var openVinoWhisperSidecarProbe = scope.ServiceProvider.GetRequiredService<IOpenVinoWhisperSidecarEnvironmentProbe>();
+        var cudaProbe = scope.ServiceProvider.GetRequiredService<ICudaEnvironmentProbe>();
         var startupLogger = scope.ServiceProvider.GetRequiredService<ILoggerFactory>().CreateLogger("Startup");
         var cudaProbeError = cudaProbe.GetAvailabilityError();
         if (cudaProbeError is not null)
@@ -254,20 +313,20 @@ try
                 cudaProbeError);
         }
 
-        var openVinoProbeError = openVinoProbe.GetAvailabilityError();
-        if (openVinoProbeError is not null)
-        {
-            startupLogger.LogWarning(
-                "{ProbeError} WhisperNetOpenVino will remain selectable, but jobs will fail until the runtime is installed.",
-                openVinoProbeError);
-        }
-
         var openVinoGenAiProbeError = openVinoGenAiProbe.GetAvailabilityError();
         if (openVinoGenAiProbeError is not null)
         {
             startupLogger.LogWarning(
                 "{ProbeError} OpenVinoGenAi will remain registered, but jobs will fail until the runtime is installed.",
                 openVinoGenAiProbeError);
+        }
+
+        var openVinoWhisperSidecarProbeError = openVinoWhisperSidecarProbe.GetAvailabilityError();
+        if (openVinoWhisperSidecarProbeError is not null)
+        {
+            startupLogger.LogWarning(
+                "{ProbeError} OpenVinoWhisperSidecar will remain selectable, but jobs will fail until the dependencies are installed.",
+                openVinoWhisperSidecarProbeError);
         }
     }
 

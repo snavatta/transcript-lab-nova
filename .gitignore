@@ -31,10 +31,9 @@ appsettings.Local.json
 playwright-report/
 test-results/
 
-# Python venvs
-data/venvs/
-
-/data
+# Data folders (user uploads, transcripts, models, etc.)
+data/
+**/data/
 
 # Archives / large files
 *.zip
