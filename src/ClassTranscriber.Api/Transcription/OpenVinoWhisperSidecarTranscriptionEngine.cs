@@ -407,7 +407,7 @@ public sealed class OpenVinoWhisperSidecarTranscriptionEngine : IRegisteredTrans
 
     public string EngineId => "OpenVinoWhisperSidecar";
 
-    public IReadOnlyCollection<string> SupportedModels { get; } = OpenVinoGenAiModelCatalog.SupportedModels;
+    public IReadOnlyCollection<string> SupportedModels { get; } = OpenVinoWhisperModelCatalog.SupportedModels;
 
     public string? GetAvailabilityError() => _probe.GetAvailabilityError();
 

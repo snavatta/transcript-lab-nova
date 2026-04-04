@@ -213,7 +213,7 @@ def _model_size_bytes(model_name: str) -> int | None:
 
 
 # ---------------------------------------------------------------------------
-# Device resolution (mirrors openvino_genai_worker.py exactly)
+# Device resolution shared by the OpenVINO Whisper integration paths
 # ---------------------------------------------------------------------------
 
 def _resolve_device(requested_device: str) -> str:
@@ -404,7 +404,7 @@ def _build_segments(chunks, duration_ms: int, plain_text: str, log_segs: bool) -
     """Build segment dicts from openvino_genai result chunks."""
     segments: list[dict] = []
     for index, chunk in enumerate(chunks or [], start=1):
-        # Use start_ts / end_ts attributes (confirmed by openvino_genai_worker.py)
+        # Use start_ts / end_ts attributes from the OpenVINO Whisper pipeline output
         text = _sanitize_text(getattr(chunk, "text", "") or "")
         if not text:
             continue

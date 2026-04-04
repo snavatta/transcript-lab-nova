@@ -275,7 +275,7 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
 
         if (_engines.ContainsKey("OpenVinoWhisperSidecar"))
         {
-            foreach (var model in OpenVinoGenAiModelCatalog.SupportedModels)
+            foreach (var model in OpenVinoWhisperModelCatalog.SupportedModels)
                 yield return CreateRegistration("OpenVinoWhisperSidecar", model);
         }
 
@@ -369,8 +369,8 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
 
     private ManagedModelRegistration CreateOpenVinoWhisperSidecarRegistration(string engine, string model)
     {
-        var definition = OpenVinoGenAiModelCatalog.GetRequired(model);
-        var installPath = OpenVinoGenAiModelDownloads.GetModelDirectory(_openVinoWhisperSidecarOptions.ModelsPath, model);
+        var definition = OpenVinoWhisperModelCatalog.GetRequired(model);
+        var installPath = OpenVinoWhisperModelAssets.GetModelDirectory(_openVinoWhisperSidecarOptions.ModelsPath, model);
         return new ManagedModelRegistration(
             engine,
             model,
@@ -383,7 +383,7 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
                 await _openVinoWhisperSidecarManager.EnsureStartedAsync(downloadCt);
                 await _openVinoSidecarModelManager.EnsureModelInstalledAsync(model, downloadCt);
             },
-            ValidateInstalledAssets: () => OpenVinoGenAiModelDownloads.ValidateInstalledModel(installPath, definition));
+                ValidateInstalledAssets: () => OpenVinoWhisperModelAssets.ValidateInstalledModel(installPath, definition));
     }
 
     private static ManagedModelRegistration CreateOpenAiCompatibleRegistration(string engine, string model)

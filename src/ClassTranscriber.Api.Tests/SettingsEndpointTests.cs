@@ -195,30 +195,6 @@ public class SettingsEndpointTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task UpdateSettings_AllowsOpenVinoGenAiWithSupportedModel()
-    {
-        var update = new
-        {
-            defaultEngine = "OpenVinoGenAi",
-            defaultModel = "base-int8",
-            defaultLanguageMode = "Auto",
-            defaultLanguageCode = (string?)null,
-            defaultAudioNormalizationEnabled = true,
-            defaultDiarizationEnabled = false,
-            defaultDiarizationMode = "Basic",
-            defaultTranscriptViewMode = "Readable"
-        };
-
-        var response = await _client.PutAsJsonAsync("/api/settings", update);
-        response.StatusCode.Should().Be(HttpStatusCode.OK);
-
-        var settings = await response.Content.ReadFromJsonAsync<GlobalSettingsDto>();
-        settings.Should().NotBeNull();
-        settings!.DefaultEngine.Should().Be("OpenVinoGenAi");
-        settings.DefaultModel.Should().Be("base-int8");
-    }
-
-    [Fact]
     public async Task UpdateSettings_AllowsSherpaOnnxSenseVoiceWithSupportedModel()
     {
         var update = new
