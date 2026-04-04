@@ -9,6 +9,7 @@ RUN npm run build
 # Stage 2: Build backend
 FROM mcr.microsoft.com/dotnet/sdk:10.0 AS backend-build
 WORKDIR /app
+COPY src/Directory.Packages.props ./
 COPY src/ClassTranscriber.slnx ./
 COPY src/ClassTranscriber.Api/ClassTranscriber.Api.csproj ClassTranscriber.Api/
 COPY src/ClassTranscriber.Api.Tests/ClassTranscriber.Api.Tests.csproj ClassTranscriber.Api.Tests/
