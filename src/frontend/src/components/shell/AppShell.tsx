@@ -1,7 +1,7 @@
-import { useEffect, useMemo, useState, type ReactNode } from 'react';
+import { useMemo, useState, type ReactNode } from 'react';
 import { Box, Toolbar } from '@mui/material';
 import SidebarNav from './SidebarNav';
-import { ShellLayoutProvider } from './ShellLayoutContext';
+import { ShellLayoutProvider } from './ShellLayoutProvider';
 import { CONTENT_MAX_WIDTH, DESKTOP_TOP_BAR_HEIGHT, MOBILE_TOP_BAR_HEIGHT } from './layout';
 import { useIsMobile } from '../../hooks/useIsMobile';
 
@@ -12,20 +12,15 @@ interface Props {
 export default function AppShell({ children }: Props) {
   const isMobile = useIsMobile();
   const [mobileNavOpen, setMobileNavOpen] = useState(false);
-
-  useEffect(() => {
-    if (!isMobile) {
-      setMobileNavOpen(false);
-    }
-  }, [isMobile]);
+  const visibleMobileNavOpen = isMobile && mobileNavOpen;
 
   const shellLayoutValue = useMemo(() => ({
     isMobile,
-    mobileNavOpen,
+    mobileNavOpen: visibleMobileNavOpen,
     openMobileNav: () => setMobileNavOpen(true),
     closeMobileNav: () => setMobileNavOpen(false),
     toggleMobileNav: () => setMobileNavOpen((current) => !current),
-  }), [isMobile, mobileNavOpen]);
+  }), [isMobile, visibleMobileNavOpen]);
 
   return (
     <ShellLayoutProvider value={shellLayoutValue}>

@@ -141,7 +141,7 @@ The backend must support:
 
 - CRUD-style folder operations
 - project rename/update of editable metadata such as display name
-- Uploading one or more files into a folder
+- Upload one or more files into a folder
 - Automatic project creation per uploaded file
 - Queueing projects for processing
 - Background transcription processing
@@ -312,7 +312,7 @@ Required fields:
 - `Cancelled`
 
 Note for MVP:
-- do not persist a separate `Uploading` project status if file upload and project creation happen within a single request
+- do not persist a separate upload-in-progress project status if file upload and project creation happen within a single request
 - treat upload progress as an HTTP request concern rather than a durable project lifecycle state
 - create the project in `Draft` or `Queued` after the file has been accepted and stored
 

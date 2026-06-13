@@ -87,7 +87,7 @@ Failed
 Cancelled
 ```
 
-For MVP, `Uploading` is not a durable project status.
+For MVP, upload-in-progress is not a durable project status.
 Upload progress should be treated as an HTTP request concern rather than persisted project lifecycle state.
 
 ## MediaType

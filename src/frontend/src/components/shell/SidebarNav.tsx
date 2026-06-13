@@ -19,7 +19,7 @@ import QueueIcon from '@mui/icons-material/Queue';
 import SettingsIcon from '@mui/icons-material/Settings';
 import AutoAwesomeIcon from '@mui/icons-material/AutoAwesome';
 import { useLocation, useRoute } from 'wouter';
-import { useShellLayout } from './ShellLayoutContext';
+import { useShellLayout } from './useShellLayout';
 import { DRAWER_WIDTH } from './layout';
 
 const navItems = [

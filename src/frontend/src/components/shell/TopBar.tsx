@@ -13,7 +13,7 @@ import MenuIcon from '@mui/icons-material/Menu';
 import MoreHorizIcon from '@mui/icons-material/MoreHoriz';
 import { useLocation } from 'wouter';
 import { CONTENT_MAX_WIDTH, DESKTOP_TOP_BAR_HEIGHT, DRAWER_WIDTH, MOBILE_TOP_BAR_HEIGHT } from './layout';
-import { useShellLayout } from './ShellLayoutContext';
+import { useShellLayout } from './useShellLayout';
 import { Children, useMemo, useState, type ReactNode } from 'react';
 
 interface Crumb {
