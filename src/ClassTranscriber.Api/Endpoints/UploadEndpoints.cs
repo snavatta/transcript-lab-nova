@@ -13,7 +13,23 @@ public static class UploadEndpoints
             if (!request.HasFormContentType)
                 return Results.BadRequest(new ErrorResponse("invalid_request", "Expected multipart/form-data."));
 
-            var form = await request.ReadFormAsync(ct);
+            IFormCollection form;
+            try
+            {
+                form = await request.ReadFormAsync(ct);
+            }
+            catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge)
+            {
+                return Results.Json(
+                    new ErrorResponse("payload_too_large", "Upload exceeds the configured request size limit."),
+                    statusCode: StatusCodes.Status413PayloadTooLarge);
+            }
+            catch (InvalidDataException)
+            {
+                return Results.Json(
+                    new ErrorResponse("payload_too_large", "Upload exceeds the configured multipart size limit."),
+                    statusCode: StatusCodes.Status413PayloadTooLarge);
+            }
 
             var folderIdStr = form["folderId"].ToString();
             if (!Guid.TryParse(folderIdStr, out var folderId))

@@ -450,7 +450,7 @@ Validation should be practical, not overly strict.
 
 The backend should remain tolerant and rely on processing failure handling when needed.
 
-Upload size limits must be configurable at runtime. The default deployment configuration should accept large single-request class recordings rather than keeping ASP.NET Core's smaller default multipart ceiling.
+Upload size limits must be configurable at runtime. The default deployment configuration should accept large single-request class recordings rather than keeping ASP.NET Core's smaller default multipart ceiling. The current default request ceiling is 10 GiB. Multipart upload buffering should use the configured storage temp directory so large uploads do not depend on limited container overlay storage.
 
 ---
 

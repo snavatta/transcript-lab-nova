@@ -77,6 +77,7 @@ RUN mkdir -p /app/data /data/audio /data/exports /data/models /data/ov-cache /da
 
 ENV ASPNETCORE_URLS=http://+:5000
 ENV ASPNETCORE_ENVIRONMENT=Production
+ENV ASPNETCORE_TEMP=/data/temp
 ENV Storage__BasePath=/data
 ENV DOTNET_ROOT=/usr/share/dotnet
 ENV PYTHONUNBUFFERED=1

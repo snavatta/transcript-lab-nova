@@ -35,6 +35,7 @@ RUN mkdir -p /app/data /data/audio /data/exports /data/models /data/temp /data/t
 
 ENV ASPNETCORE_URLS=http://+:5000
 ENV ASPNETCORE_ENVIRONMENT=Production
+ENV ASPNETCORE_TEMP=/data/temp
 ENV Storage__BasePath=/data
 
 EXPOSE 5000

@@ -25,6 +25,13 @@ try
     var uploadOptions = builder.Configuration.GetSection(UploadOptions.SectionName).Get<UploadOptions>() ?? new UploadOptions();
     if (uploadOptions.MaxRequestBodySizeBytes <= 0)
         uploadOptions.MaxRequestBodySizeBytes = UploadOptions.DefaultMaxRequestBodySizeBytes;
+    var storageOptionsForTemp = builder.Configuration.GetSection("Storage").Get<StorageOptions>() ?? new StorageOptions();
+    if (string.IsNullOrWhiteSpace(Environment.GetEnvironmentVariable("ASPNETCORE_TEMP")))
+    {
+        var uploadTempPath = Path.GetFullPath(Path.Combine(storageOptionsForTemp.BasePath, storageOptionsForTemp.TempPath));
+        Directory.CreateDirectory(uploadTempPath);
+        Environment.SetEnvironmentVariable("ASPNETCORE_TEMP", uploadTempPath);
+    }
 
     builder.Host.UseSerilog((context, services, configuration) => configuration
         .ReadFrom.Configuration(context.Configuration)

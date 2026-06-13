@@ -593,6 +593,30 @@ public class TranscriptionPipelineTests : IAsyncLifetime
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    [Fact]
+    public async Task Upload_WhenConfiguredMultipartLimitIsExceeded_ReturnsPayloadTooLarge()
+    {
+        await using var limitedFactory = new TestWebApplicationFactory(maxRequestBodySizeBytes: 1024);
+        var limitedClient = limitedFactory.Client;
+
+        var folderResponse = await limitedClient.PostAsJsonAsync("/api/folders", new { name = "Tiny Limit Folder" });
+        folderResponse.EnsureSuccessStatusCode();
+        var folder = await folderResponse.Content.ReadFromJsonAsync<JsonElement>();
+
+        using var content = new MultipartFormDataContent();
+        content.Add(new StringContent(folder.GetProperty("id").GetGuid().ToString()), "folderId");
+
+        var file = new ByteArrayContent(new byte[2048]);
+        file.Headers.ContentType = new MediaTypeHeaderValue("video/mp4");
+        content.Add(file, "files", "too-large.mp4");
+
+        var response = await limitedClient.PostAsync("/api/uploads/batch", content);
+        response.StatusCode.Should().Be(HttpStatusCode.RequestEntityTooLarge);
+
+        var body = await response.Content.ReadFromJsonAsync<ErrorResponse>();
+        body!.Code.Should().Be("payload_too_large");
+    }
+
     // --- Helpers ---
 
     private async Task<Guid> CreateFolder(string name)

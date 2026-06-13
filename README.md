@@ -86,7 +86,7 @@ dotnet run
 The API runs at `http://localhost:5000`. Swagger UI is available at `/swagger` in development.
 In local development, SQLite and all runtime artifacts are stored under the repo-root `data/` directory rather than under `src/ClassTranscriber.Api/`.
 When a WhisperNet model is selected for the first time, the backend can download the missing `ggml-*.bin` file into the configured `models/` directory automatically.
-The default upload request limit is 1 GiB. Override it with `Uploads__MaxRequestBodySizeBytes` if you need a different ceiling.
+The default upload request limit is 10 GiB. Override it with `Uploads__MaxRequestBodySizeBytes` if you need a different ceiling. Multipart upload buffering uses the configured storage temp directory by default.
 
 ### Data Storage
 
@@ -244,7 +244,7 @@ docker compose up --build
 ```
 
 The default image uses `Dockerfile` and is intended for CPU-only runs. The application runs at `http://localhost:5000` with data persisted in a Docker volume.
-Large uploads use the same 1 GiB default ceiling in Docker through `appsettings.json`. Override it with `Uploads__MaxRequestBodySizeBytes` in Compose if needed.
+Large uploads use the same 10 GiB default ceiling in Docker through `appsettings.json`. Docker images set `ASPNETCORE_TEMP=/data/temp` so multipart upload buffering uses the mounted data volume instead of the container overlay. Override `Uploads__MaxRequestBodySizeBytes` in Compose if needed.
 
 To try NVIDIA CUDA inside Docker, use the optional override:
 
