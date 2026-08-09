@@ -16,6 +16,7 @@ public sealed class DiagnosticsEndpointTests : IAsyncLifetime
             [
                 new NoOpTranscriptionEngine("WhisperNet", ["small", "base"]),
                 new NoOpTranscriptionEngine("WhisperNetCuda", ["small"], "CUDA runtime libraries are not available."),
+                new NoOpTranscriptionEngine("WhisperNetCoreML", ["small"], "WhisperNetCoreML is only supported when running natively on macOS ARM64 / Apple Silicon."),
             ]);
         _client = _factory.Client;
         return Task.CompletedTask;
@@ -47,6 +48,9 @@ public sealed class DiagnosticsEndpointTests : IAsyncLifetime
         engines.Should().Contain(engine => engine.GetProperty("engine").GetString() == "WhisperNetCuda"
             && !engine.GetProperty("isAvailable").GetBoolean()
             && engine.GetProperty("availabilityError").GetString()!.Contains("CUDA runtime"));
+        engines.Should().Contain(engine => engine.GetProperty("engine").GetString() == "WhisperNetCoreML"
+            && !engine.GetProperty("isAvailable").GetBoolean()
+            && engine.GetProperty("availabilityError").GetString()!.Contains("macOS ARM64"));
 
         var projects = payload.GetProperty("projects").EnumerateArray().ToArray();
         projects.Should().Contain(project => project.GetProperty("projectName").GetString() == "lecture");

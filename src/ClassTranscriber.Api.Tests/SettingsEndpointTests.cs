@@ -118,9 +118,11 @@ public class SettingsEndpointTests : IAsyncLifetime
         options.Engines.Should().ContainSingle(engine => engine.Engine == "SherpaOnnx");
         options.Engines.Should().ContainSingle(engine => engine.Engine == "SherpaOnnxSenseVoice");
         options.Engines.Should().ContainSingle(engine => engine.Engine == "WhisperNetCuda");
+        options.Engines.Should().ContainSingle(engine => engine.Engine == "WhisperNetCoreML");
         options.Engines.Single(engine => engine.Engine == "SherpaOnnx").Models.Should().Contain(new[] { "small", "medium" });
         options.Engines.Single(engine => engine.Engine == "SherpaOnnxSenseVoice").Models.Should().ContainSingle().Which.Should().Be("small");
-        options.Engines.Single(engine => engine.Engine == "WhisperNetCuda").Models.Should().Contain(new[] { "tiny", "base", "small", "medium", "large" });
+        options.Engines.Single(engine => engine.Engine == "WhisperNetCuda").Models.Should().Contain(new[] { "tiny", "base", "small", "medium", "large", "large-v3-turbo" });
+        options.Engines.Single(engine => engine.Engine == "WhisperNetCoreML").Models.Should().Contain(new[] { "tiny", "base", "small", "medium", "large", "large-v3-turbo" });
     }
 
     [Fact]
@@ -134,6 +136,7 @@ public class SettingsEndpointTests : IAsyncLifetime
         catalog!.Models.Should().Contain(entry => entry.Engine == "WhisperNet" && entry.Model == "small");
         catalog.Models.Should().Contain(entry => entry.Engine == "SherpaOnnx" && entry.Model == "medium");
         catalog.Models.Should().Contain(entry => entry.Engine == "WhisperNetCuda" && entry.Model == "base");
+        catalog.Models.Should().Contain(entry => entry.Engine == "WhisperNetCoreML" && entry.Model == "large-v3-turbo");
     }
 
     [Fact]
@@ -168,6 +171,28 @@ public class SettingsEndpointTests : IAsyncLifetime
         });
 
         response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task ManageTranscriptionModel_ProbeInstalledCoreMLModelWithoutEncoder_ReturnsFailed()
+    {
+        var whisperNetOptions = _factory.Services.GetRequiredService<IOptions<WhisperNetOptions>>().Value;
+        var installPath = GgmlModelDownloads.GetModelPath(whisperNetOptions.ModelsPath, "small");
+        Directory.CreateDirectory(Path.GetDirectoryName(installPath)!);
+        await File.WriteAllBytesAsync(installPath, []);
+
+        var response = await _client.PostAsJsonAsync("/api/settings/models/manage", new
+        {
+            engine = "WhisperNetCoreML",
+            model = "small",
+            action = "Probe",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var entry = await response.Content.ReadFromJsonAsync<TranscriptionModelEntryDto>();
+        entry.Should().NotBeNull();
+        entry!.ProbeState.Should().Be("Failed");
+        entry.ProbeMessage.Should().Contain("ggml-small-encoder.mlmodelc");
     }
 
     [Fact]

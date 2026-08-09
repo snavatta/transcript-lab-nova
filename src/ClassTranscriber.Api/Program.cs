@@ -220,6 +220,7 @@ try
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, SherpaOnnxSenseVoiceTranscriptionEngine>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, WhisperNetCpuTranscriptionEngine>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, WhisperNetCudaTranscriptionEngine>();
+    builder.Services.AddSingleton<IRegisteredTranscriptionEngine, WhisperNetCoreMLTranscriptionEngine>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, OpenVinoWhisperSidecarTranscriptionEngine>();
     builder.Services.AddSingleton<IOpenVinoWhisperSidecarManager, OpenVinoWhisperSidecarManager>();
     builder.Services.AddSingleton<IOpenVinoWhisperSidecarEnvironmentProbe, OpenVinoWhisperSidecarEnvironmentProbe>();

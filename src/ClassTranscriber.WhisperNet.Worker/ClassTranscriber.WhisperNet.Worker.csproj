@@ -12,6 +12,7 @@
     <PackageReference Include="Whisper.net" />
     <PackageReference Include="Whisper.net.Runtime" />
     <PackageReference Include="Whisper.net.Runtime.Cuda" />
+    <PackageReference Include="Whisper.net.Runtime.CoreML" />
   </ItemGroup>
 
 </Project>

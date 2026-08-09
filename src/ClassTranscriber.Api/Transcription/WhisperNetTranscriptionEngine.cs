@@ -1,3 +1,4 @@
+using System.Runtime.InteropServices;
 using ClassTranscriber.Api.Domain;
 using Microsoft.Extensions.Options;
 
@@ -152,4 +153,25 @@ public sealed class WhisperNetCudaTranscriptionEngine : WhisperNetTranscriptionE
         => _cudaEnvironmentProbe.GetAvailabilityError();
 }
 
+public sealed class WhisperNetCoreMLTranscriptionEngine : WhisperNetTranscriptionEngineBase
+{
+    public WhisperNetCoreMLTranscriptionEngine(
+        IOptions<WhisperNetOptions> options,
+        IWhisperNetWorkerRunner workerRunner,
+        ILogger<WhisperNetCoreMLTranscriptionEngine> logger)
+        : base(options, workerRunner, logger)
+    {
+    }
 
+    public override string EngineId => "WhisperNetCoreML";
+
+    protected override WhisperNetWorkerMode WorkerMode => WhisperNetWorkerMode.CoreML;
+
+    protected override string? GetAdditionalAvailabilityError()
+    {
+        if (!OperatingSystem.IsMacOS() || RuntimeInformation.ProcessArchitecture != Architecture.Arm64)
+            return "WhisperNetCoreML is only supported when running natively on macOS ARM64 / Apple Silicon.";
+
+        return null;
+    }
+}

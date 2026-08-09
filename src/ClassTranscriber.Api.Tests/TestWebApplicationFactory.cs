@@ -40,8 +40,9 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
             ?? [
                 new NoOpTranscriptionEngine("SherpaOnnx", ["small", "medium"]),
                 new NoOpTranscriptionEngine("SherpaOnnxSenseVoice", ["small"]),
-                new NoOpTranscriptionEngine("WhisperNet", ["tiny", "base", "small", "medium", "large"]),
-                new NoOpTranscriptionEngine("WhisperNetCuda", ["tiny", "base", "small", "medium", "large"]),
+                new NoOpTranscriptionEngine("WhisperNet", ["tiny", "base", "small", "medium", "large", "large-v3-turbo"]),
+                new NoOpTranscriptionEngine("WhisperNetCuda", ["tiny", "base", "small", "medium", "large", "large-v3-turbo"]),
+                new NoOpTranscriptionEngine("WhisperNetCoreML", ["tiny", "base", "small", "medium", "large", "large-v3-turbo"]),
             ];
         var resolvedMaxRequestBodySizeBytes = maxRequestBodySizeBytes is > 0
             ? maxRequestBodySizeBytes.Value

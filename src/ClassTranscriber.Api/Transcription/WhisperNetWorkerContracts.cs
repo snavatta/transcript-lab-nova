@@ -6,6 +6,7 @@ public enum WhisperNetWorkerMode
 {
     Cpu,
     Cuda,
+    CoreML,
 }
 
 public sealed record WhisperNetWorkerRequest

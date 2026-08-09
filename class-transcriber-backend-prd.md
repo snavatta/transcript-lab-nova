@@ -337,6 +337,7 @@ Current backend extension points may additionally expose:
 - `SherpaOnnxSenseVoice`
 - `WhisperNet`
 - `WhisperNetCuda`
+- `WhisperNetCoreML`
 - `OpenVinoWhisperSidecar`
 - `OnnxWhisper`
 - `OpenAiCompatible`
@@ -344,7 +345,7 @@ Current backend extension points may additionally expose:
 Implementation note:
 - `SherpaOnnx` may run on a local .NET runtime path or isolated helper worker as long as it stays behind the transcription engine abstraction.
 - `SherpaOnnxSenseVoice` may run on the same local .NET runtime path or isolated helper worker pattern, but should remain a distinct engine option from Whisper-backed `SherpaOnnx`.
-- `WhisperNet` CPU and `WhisperNetCuda` should run through isolated helper worker processes so runtime selection remains per project/job.
+- `WhisperNet` CPU, `WhisperNetCuda`, and `WhisperNetCoreML` should run through isolated helper worker processes so runtime selection remains per project/job. `WhisperNetCoreML` is only supported by native macOS ARM64 / Apple Silicon deployments, not Linux Docker containers on macOS.
 - `OpenVinoWhisperSidecar` runs through a long-lived Python FastAPI sidecar with an OpenAI-compatible API. The sidecar manages its own model downloads. The C# engine uses `ISpeechToTextClient` (Microsoft.Extensions.AI experimental) internally. It is the recommended OpenVINO engine for deployments with local GPU hardware.
 - `OnnxWhisper` is a reserved placeholder for a future native .NET ONNX Whisper engine. It reports unavailable and must not be used in production.
 - `OpenAiCompatible` proxies transcription to any configured OpenAI-compatible API. It must not appear in the engine selector when `BaseUrl` is not configured.
@@ -391,6 +392,7 @@ Recommended folders:
 - temporary processing artifacts go under `temp/`
 - transcription model files may live under `models/` if needed
 - missing ggml WhisperNet model files may be auto-downloaded into `models/` on first use when runtime configuration allows it
+- `WhisperNetCoreML` reuses ggml model files but also requires the matching `ggml-<model>-encoder.mlmodelc/` package next to the ggml file
 - `OpenVinoWhisperSidecar` should keep downloaded pre-exported models under a separate subtree such as `models/openvino-genai/<model>/`
 - runtime configuration may optionally enable per-segment worker logging for WhisperNet and SherpaOnnx engines to aid debugging long-running jobs; default behavior should keep this disabled to avoid excessive log volume
 

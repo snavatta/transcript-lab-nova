@@ -113,6 +113,7 @@ internal static class WhisperRuntimeConfigurator
         {
             WhisperNetWorkerMode.Cpu => [RuntimeLibrary.Cpu, RuntimeLibrary.CpuNoAvx],
             WhisperNetWorkerMode.Cuda => [RuntimeLibrary.Cuda],
+            WhisperNetWorkerMode.CoreML => [RuntimeLibrary.CoreML],
             _ => throw new InvalidOperationException($"Unsupported Whisper.net worker mode '{mode}'."),
         };
     }
@@ -235,6 +236,7 @@ internal enum WhisperNetWorkerMode
 {
     Cpu,
     Cuda,
+    CoreML,
     OpenVino,
 }
 

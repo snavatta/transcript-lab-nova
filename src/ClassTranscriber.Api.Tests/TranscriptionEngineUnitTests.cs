@@ -1,6 +1,8 @@
 using System.Diagnostics;
 using System.Net;
 using System.Net.Http.Json;
+using System.Runtime.InteropServices;
+using System.Text.Json;
 using ClassTranscriber.Api.Contracts;
 using ClassTranscriber.Api.Domain;
 using ClassTranscriber.Api.Transcription;
@@ -71,6 +73,46 @@ public class TranscriptionEngineUnitTests
         runner.Requests[0].Mode.Should().Be(WhisperNetWorkerMode.Cuda);
         runner.Requests[0].LanguageMode.Should().Be("Auto");
         runner.Requests[0].LanguageCode.Should().BeNull();
+    }
+
+    [Fact]
+    public void WhisperNetCoreMLEngine_ReportsUnavailableOutsideNativeMacArm64()
+    {
+        var engine = new WhisperNetCoreMLTranscriptionEngine(
+            Options.Create(new WhisperNetOptions
+            {
+                WorkerPath = CreateTempWorkerFile("whisper-coreml.exe"),
+            }),
+            new RecordingWhisperNetWorkerRunner(),
+            NullLogger<WhisperNetCoreMLTranscriptionEngine>.Instance);
+
+        var availabilityError = engine.GetAvailabilityError();
+
+        if (OperatingSystem.IsMacOS() && RuntimeInformation.ProcessArchitecture == Architecture.Arm64)
+            availabilityError.Should().BeNull();
+        else
+            availabilityError.Should().Contain("macOS ARM64");
+    }
+
+    [Fact]
+    public void WhisperNetWorkerRequest_SerializesCoreMLMode()
+    {
+        var request = new WhisperNetWorkerRequest
+        {
+            Mode = WhisperNetWorkerMode.CoreML,
+            AudioPath = "/tmp/audio.wav",
+            Model = "small",
+            LanguageMode = "Auto",
+            ModelsPath = "/tmp/models",
+            AutoDownloadModels = false,
+            LogSegments = false,
+        };
+
+        var json = JsonSerializer.Serialize(request, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+        var roundTrip = JsonSerializer.Deserialize<WhisperNetWorkerRequest>(json, new JsonSerializerOptions(JsonSerializerDefaults.Web));
+
+        roundTrip.Should().NotBeNull();
+        roundTrip!.Mode.Should().Be(WhisperNetWorkerMode.CoreML);
     }
 
     [Fact]

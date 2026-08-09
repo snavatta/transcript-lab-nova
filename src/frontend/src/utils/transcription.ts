@@ -6,6 +6,8 @@ export function formatEngineLabel(engine: string): string {
       return 'WhisperNet.CPU';
     case 'WhisperNetCuda':
       return 'WhisperNet.CUDA';
+    case 'WhisperNetCoreML':
+      return 'WhisperNet.CoreML';
     case 'OpenVinoWhisperSidecar':
       return 'OpenVINO Sidecar';
     case 'OnnxWhisper':

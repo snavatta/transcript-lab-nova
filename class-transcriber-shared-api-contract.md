@@ -115,6 +115,7 @@ SherpaOnnx
 SherpaOnnxSenseVoice
 WhisperNet
 WhisperNetCuda
+WhisperNetCoreML
 OpenVinoWhisperSidecar
 OnnxWhisper
 OpenAiCompatible
@@ -126,10 +127,11 @@ Implementation note:
   Current backend implementation only accepts fixed-language codes `zh`, `en`, `ja`, `ko`, and `yue` for this engine; `Auto` remains supported.
 - `WhisperNet` uses the Whisper.net managed library with CPU inference (Whisper.net.Runtime) through an isolated helper worker process so runtime selection is per job rather than process-global.
 - `WhisperNetCuda` uses the Whisper.net managed library with NVIDIA CUDA acceleration through the same isolated helper-worker model. Current backend implementation targets the stable `Whisper.net.Runtime.Cuda` runtime. Requires a supported NVIDIA GPU plus CUDA runtime libraries on the host/container.
+- `WhisperNetCoreML` uses the Whisper.net managed library with Apple CoreML acceleration through the same isolated helper-worker model. It is only available for native macOS ARM64 / Apple Silicon runs. Linux Docker containers on macOS must be treated as CPU-only for this engine family.
 - `OpenVinoWhisperSidecar` uses a long-lived Python FastAPI sidecar backed by `openvino_genai`. The sidecar exposes an OpenAI-compatible `/v1/audio/transcriptions` endpoint and a model management API. It caches loaded Whisper pipelines in memory between jobs and manages its own model downloads internally. The C# engine communicates with it via `ISpeechToTextClient` (Microsoft.Extensions.AI experimental). It is the recommended OpenVINO engine for deployments with a local GPU.
 - `OnnxWhisper` is a reserved placeholder for a future native .NET ONNX Whisper engine using `Microsoft.ML.OnnxRuntime`. It is not yet implemented and reports unavailable in all current releases.
 - `OpenAiCompatible` is a generic proxy engine that forwards transcription to any external service that exposes an OpenAI-compatible `/v1/audio/transcriptions` endpoint (e.g., the local `OpenVinoWhisperSidecar`, Whisper.cpp server, Ollama). It is hidden from the engine selector when `BaseUrl` is not configured.
-- `WhisperNet` and `WhisperNetCuda` use shared ggml model files and support auto-download.
+- `WhisperNet`, `WhisperNetCuda`, and `WhisperNetCoreML` use shared ggml model files and support auto-download. `WhisperNetCoreML` also requires the matching CoreML encoder `.mlmodelc` package beside the ggml model.
 - `OpenVinoWhisperSidecar` uses curated pre-exported model directories under `models/openvino-genai/` and supports managed download/redownload/probe from the settings model manager. Download is proxied to the sidecar's own model management API.
 
 ## ModelName
@@ -144,8 +146,9 @@ The backend may allow extension, but frontend should default to the above MVP-sa
 Current implementation note:
 - `SherpaOnnx` currently supports `small`, `medium`
 - `SherpaOnnxSenseVoice` currently supports `small`
-- `WhisperNet` supports `tiny`, `base`, `small`, `medium`, `large`
-- `WhisperNetCuda` supports `tiny`, `base`, `small`, `medium`, `large`
+- `WhisperNet` supports `tiny`, `base`, `small`, `medium`, `large`, `large-v3-turbo`
+- `WhisperNetCuda` supports `tiny`, `base`, `small`, `medium`, `large`, `large-v3-turbo`
+- `WhisperNetCoreML` supports `tiny`, `base`, `small`, `medium`, `large`, `large-v3-turbo`
 - `OpenVinoWhisperSidecar` supports `tiny-int8`, `tiny-fp16`, `base-int8`, `base-fp16`, `small-int8`, `small-fp16`, `medium-int8`, `medium-fp16`, `large-v3-int8`, `large-v3-fp16`, with `base-int8` as the recommended Arc A310 default
 
 ---

@@ -3,6 +3,7 @@ const ENGINE_MODEL_OPTIONS = {
   SherpaOnnxSenseVoice: ['small'],
   WhisperNet: ['tiny', 'base', 'small', 'medium', 'large', 'large-v3-turbo'],
   WhisperNetCuda: ['tiny', 'base', 'small', 'medium', 'large', 'large-v3-turbo'],
+  WhisperNetCoreML: ['tiny', 'base', 'small', 'medium', 'large', 'large-v3-turbo'],
   OpenVinoWhisperSidecar: ['tiny-int8', 'tiny-fp16', 'base-int8', 'base-fp16', 'small-int8', 'small-fp16', 'medium-int8', 'medium-fp16', 'large-v3-int8', 'large-v3-fp16'],
   OpenAiCompatible: [] as string[],
 } as const;

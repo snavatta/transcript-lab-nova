@@ -28,6 +28,7 @@
     <PackageVersion Include="Whisper.net" Version="1.9.1"/>
     <PackageVersion Include="Whisper.net.Runtime" Version="1.9.1"/>
     <PackageVersion Include="Whisper.net.Runtime.Cuda" Version="1.9.1"/>
+    <PackageVersion Include="Whisper.net.Runtime.CoreML" Version="1.9.1"/>
   </ItemGroup>
   <ItemGroup>
     <PackageVersion Include="coverlet.collector" Version="10.0.1"/>

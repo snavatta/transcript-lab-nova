@@ -36,6 +36,7 @@ public enum TranscriptionEngine
     SherpaOnnxSenseVoice,
     WhisperNet,
     WhisperNetCuda,
+    WhisperNetCoreML,
     OpenVinoWhisperSidecar,
     OnnxWhisper,
     OpenAiCompatible

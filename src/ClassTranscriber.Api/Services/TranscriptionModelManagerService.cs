@@ -16,13 +16,14 @@ public interface ITranscriptionModelManagerService
 
 public sealed class TranscriptionModelManagerService : ITranscriptionModelManagerService
 {
-    private static readonly string[] GgmlModels = ["tiny", "base", "small", "medium", "large"];
+    private static readonly string[] GgmlModels = ["tiny", "base", "small", "medium", "large", "large-v3-turbo"];
     private static readonly string[] SherpaWhisperModels = ["small", "medium"];
     private static readonly string[] SherpaSenseVoiceModels = ["small"];
     private static readonly HashSet<string> LightweightProbeEngines = new(StringComparer.OrdinalIgnoreCase)
     {
         "WhisperNet",
         "WhisperNetCuda",
+        "WhisperNetCoreML",
         "OpenVinoWhisperSidecar",
     };
     private readonly Dictionary<string, IRegisteredTranscriptionEngine> _engines;
@@ -273,6 +274,12 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
                 yield return CreateRegistration("WhisperNetCuda", model);
         }
 
+        if (_engines.ContainsKey("WhisperNetCoreML"))
+        {
+            foreach (var model in GgmlModels)
+                yield return CreateRegistration("WhisperNetCoreML", model);
+        }
+
         if (_engines.ContainsKey("OpenVinoWhisperSidecar"))
         {
             foreach (var model in OpenVinoWhisperModelCatalog.SupportedModels)
@@ -307,6 +314,7 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
         {
             "WhisperNet" => CreateGgmlRegistration(engine, model, _whisperNetOptions.ModelsPath),
             "WhisperNetCuda" => CreateGgmlRegistration(engine, model, _whisperNetOptions.ModelsPath),
+            "WhisperNetCoreML" => CreateCoreMLGgmlRegistration(engine, model, _whisperNetOptions.ModelsPath),
             "OpenVinoWhisperSidecar" => CreateOpenVinoWhisperSidecarRegistration(engine, model),
             "OpenAiCompatible" => CreateOpenAiCompatibleRegistration(engine, model),
             "SherpaOnnx" => CreateSherpaRegistration(engine, model, _sherpaOnnxOptions.ModelsPath, _sherpaOnnxOptions.ModelDownloadBaseUrl, SherpaOnnxWhisperModelDownloadCatalog.TryGet),
@@ -331,6 +339,36 @@ public sealed class TranscriptionModelManagerService : ITranscriptionModelManage
                 _logger,
                 downloadCt),
             ValidateInstalledAssets: null);
+    }
+
+    private ManagedModelRegistration CreateCoreMLGgmlRegistration(string engine, string model, string modelsPath)
+    {
+        var installPath = GgmlModelDownloads.GetModelPath(modelsPath, model);
+        return new ManagedModelRegistration(
+            engine,
+            model,
+            installPath,
+            File.Exists(installPath),
+            true,
+            DownloadAsync: downloadCt => GgmlModelDownloads.DownloadModelAsync(
+                _httpClientFactory,
+                _whisperNetOptions.ModelDownloadBaseUrl,
+                model,
+                installPath,
+                _logger,
+                downloadCt),
+            ValidateInstalledAssets: () => ValidateCoreMLEncoderAssets(installPath));
+    }
+
+    private static void ValidateCoreMLEncoderAssets(string ggmlModelPath)
+    {
+        var modelDirectory = Path.GetDirectoryName(ggmlModelPath)
+            ?? throw new InvalidOperationException($"Unable to resolve model directory for {ggmlModelPath}.");
+        var modelNameWithoutExtension = Path.GetFileNameWithoutExtension(ggmlModelPath);
+        var encoderPath = Path.Combine(modelDirectory, $"{modelNameWithoutExtension}-encoder.mlmodelc");
+
+        if (!Directory.Exists(encoderPath))
+            throw new InvalidOperationException($"WhisperNetCoreML requires the matching CoreML encoder package at {encoderPath}.");
     }
 
     private ManagedModelRegistration CreateSherpaRegistration(

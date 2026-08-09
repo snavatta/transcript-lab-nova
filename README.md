@@ -187,6 +187,25 @@ Uses the [Whisper.net](https://github.com/sandrohanea/whisper.net) managed libra
 
 Models use shared `ggml-*.bin` assets and are auto-downloaded on first use. The backend probes for CUDA runtime libraries before each job and returns a clear failure if the host/container cannot load them.
 
+#### WhisperNetCoreML (native macOS Apple Silicon)
+
+Uses the [Whisper.net](https://github.com/sandrohanea/whisper.net) managed library with the `Whisper.net.Runtime.CoreML` backend through the same isolated helper worker process.
+
+**Prerequisites:**
+
+- Native macOS ARM64 / Apple Silicon process
+- FFmpeg installed on the host, for example with `brew install ffmpeg`
+- Shared `ggml-*.bin` Whisper model file
+- Matching CoreML encoder package next to the ggml file, for example:
+
+```text
+models/
+├── ggml-large-v3-turbo.bin
+└── ggml-large-v3-turbo-encoder.mlmodelc/
+```
+
+Linux Docker containers on macOS do not receive direct Apple Metal/CoreML/ANE access, so Docker-only Whisper should be treated as CPU-only on Apple Silicon. For Mac mini M4 deployments, prefer a native macOS publish or run a native host transcription sidecar and call it from Docker through an OpenAI-compatible endpoint.
+
 #### OpenVinoWhisperSidecar (Intel GPU)
 
 Uses the supported OpenVINO Whisper sidecar for Intel GPU acceleration. The backend starts a local FastAPI sidecar process that loads OpenVINO Whisper models through the `openvino-genai` Python package and exposes an OpenAI-compatible `/v1/audio/transcriptions` endpoint.
@@ -212,6 +231,42 @@ Configuration for all WhisperNet engines in `appsettings.json`:
 ```
 
 When `Transcription:LogSegments` or an engine-specific `...:LogSegments` option is set to `true`, the worker logs each decoded transcript segment to container stderr so it appears in `docker compose logs -f`. The default is `false` to avoid noisy logs on long recordings.
+
+### Native macOS Apple Silicon Deployment
+
+Publish the native app and self-contained WhisperNet worker for Apple Silicon:
+
+```bash
+./scripts/publish-macos-coreml.sh
+```
+
+Suggested host layout:
+
+```text
+/Users/transcriptlab/transcriptlab/
+├── app/
+│   ├── ClassTranscriber.Api
+│   └── ClassTranscriber.WhisperNet.Worker
+└── data/
+    ├── transcriptlab.db
+    ├── uploads/
+    ├── audio/
+    ├── transcripts/
+    ├── exports/
+    ├── models/
+    └── temp/
+```
+
+Recommended runtime environment:
+
+```bash
+export ASPNETCORE_ENVIRONMENT=Production
+export Storage__BasePath=/Users/transcriptlab/transcriptlab/data
+export Transcription__FFmpegPath=/opt/homebrew/bin/ffmpeg
+export Transcription__WhisperNet__WorkerPath=/Users/transcriptlab/transcriptlab/app/ClassTranscriber.WhisperNet.Worker
+```
+
+Use an absolute FFmpeg path because macOS services launched through `launchd` may not inherit the same shell `PATH` as an interactive terminal. On Apple Silicon Homebrew, FFmpeg is usually at `/opt/homebrew/bin/ffmpeg`.
 
 ### Frontend
 
