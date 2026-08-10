@@ -1,3 +1,6 @@
+using System.Security;
+using System.Text;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.Options;
 
 namespace ClassTranscriber.Api;
@@ -5,12 +8,16 @@ namespace ClassTranscriber.Api;
 public sealed class ChatGptSourceOptions
 {
     public const string SectionName = "ChatGptSource";
+    public const string CursorIntegrityConfigurationError =
+        "ChatGptSource cursor integrity configuration is invalid.";
 
     public bool Enabled { get; set; }
 
     public string? ApplicationBaseUrl { get; set; }
 
     public string? CursorIntegrityKey { get; set; }
+
+    public string? CursorIntegrityKeyFile { get; set; }
 
     internal static bool TryNormalizeApplicationBaseUrl(string? value, out Uri? normalizedUri)
     {
@@ -38,24 +45,148 @@ public sealed class ChatGptSourceOptions
 
 internal sealed class ChatGptSourceOptionsValidator : IValidateOptions<ChatGptSourceOptions>
 {
+    private const int MinimumCursorIntegrityKeyBytes = 32;
+    private const int MaximumCursorIntegrityKeyBytes = 4096;
+    private const int MaximumCursorIntegrityKeyFileBytes = 4099;
+    private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
+
     public ValidateOptionsResult Validate(string? name, ChatGptSourceOptions options)
     {
         if (!options.Enabled)
             return ValidateOptionsResult.Skip;
 
-        if (string.IsNullOrWhiteSpace(options.CursorIntegrityKey) || options.CursorIntegrityKey.Length < 32)
-        {
-            return ValidateOptionsResult.Fail(
-                "ChatGptSource:CursorIntegrityKey must be a non-empty string of at least 32 characters when ChatGptSource is enabled.");
-        }
+        if (!TryResolveCursorIntegrityKey(options, out var cursorIntegrityKey))
+            return InvalidCursorIntegrityConfiguration();
+
+        options.CursorIntegrityKey = cursorIntegrityKey;
 
         if (!ChatGptSourceOptions.TryNormalizeApplicationBaseUrl(options.ApplicationBaseUrl, out var uri))
-        {
-            return ValidateOptionsResult.Fail(
-                "ChatGptSource:ApplicationBaseUrl must be an absolute HTTP or HTTPS URL without user-info, query, or fragment components when ChatGptSource is enabled.");
-        }
+            return InvalidCursorIntegrityConfiguration();
 
         options.ApplicationBaseUrl = uri?.AbsoluteUri;
         return ValidateOptionsResult.Success;
+    }
+
+    private static ValidateOptionsResult InvalidCursorIntegrityConfiguration() =>
+        ValidateOptionsResult.Fail(ChatGptSourceOptions.CursorIntegrityConfigurationError);
+
+    private static bool TryResolveCursorIntegrityKey(
+        ChatGptSourceOptions options,
+        out string? cursorIntegrityKey)
+    {
+        cursorIntegrityKey = null;
+        var hasDirectKey = options.CursorIntegrityKey is not null;
+        var hasKeyFile = options.CursorIntegrityKeyFile is not null;
+        if (hasDirectKey == hasKeyFile)
+            return false;
+
+        if (hasDirectKey)
+            return IsValidCursorIntegrityKey(options.CursorIntegrityKey!, out cursorIntegrityKey);
+
+        if (!TryReadCursorIntegrityKeyFile(options.CursorIntegrityKeyFile!, out var fileKey)
+            || fileKey is null)
+        {
+            return false;
+        }
+
+        return IsValidCursorIntegrityKey(fileKey, out cursorIntegrityKey);
+    }
+
+    private static bool TryReadCursorIntegrityKeyFile(string path, out string? cursorIntegrityKey)
+    {
+        cursorIntegrityKey = null;
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+            if (stream.Length > MaximumCursorIntegrityKeyFileBytes)
+                return false;
+
+            var bytes = new byte[(int)stream.Length];
+            var read = 0;
+            while (read < bytes.Length)
+            {
+                var count = stream.Read(bytes, read, bytes.Length - read);
+                if (count == 0)
+                    return false;
+                read += count;
+            }
+
+            if (HasUtf8Bom(bytes))
+                return false;
+
+            if (bytes.EndsWith("\r\n"u8))
+                bytes = bytes[..^2];
+            else if (bytes.EndsWith("\n"u8))
+                bytes = bytes[..^1];
+
+            cursorIntegrityKey = StrictUtf8.GetString(bytes);
+            return true;
+        }
+        catch (DecoderFallbackException)
+        {
+            return false;
+        }
+        catch (ArgumentException)
+        {
+            return false;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (NotSupportedException)
+        {
+            return false;
+        }
+        catch (SecurityException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            return false;
+        }
+    }
+
+    private static bool IsValidCursorIntegrityKey(string value, out string? cursorIntegrityKey)
+    {
+        cursorIntegrityKey = null;
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        byte[] bytes;
+        try
+        {
+            bytes = StrictUtf8.GetBytes(value);
+        }
+        catch (EncoderFallbackException)
+        {
+            return false;
+        }
+
+        if (bytes.Length is < MinimumCursorIntegrityKeyBytes or > MaximumCursorIntegrityKeyBytes
+            || HasUtf8Bom(bytes)
+            || bytes.IndexOfAny((byte)0, (byte)'\r', (byte)'\n') >= 0)
+        {
+            return false;
+        }
+
+        cursorIntegrityKey = value;
+        return true;
+    }
+
+    private static bool HasUtf8Bom(ReadOnlySpan<byte> bytes) =>
+        bytes.StartsWith(Encoding.UTF8.Preamble);
+}
+
+internal static class ChatGptSourceStartupConfiguration
+{
+    public static void Validate(IConfiguration configuration)
+    {
+        var options = configuration.GetSection(ChatGptSourceOptions.SectionName).Get<ChatGptSourceOptions>()
+            ?? new ChatGptSourceOptions();
+        var result = new ChatGptSourceOptionsValidator().Validate(Options.DefaultName, options);
+        if (result.Failed)
+            throw new OptionsValidationException(ChatGptSourceOptions.SectionName, typeof(ChatGptSourceOptions), result.Failures);
     }
 }
