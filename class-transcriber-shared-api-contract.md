@@ -60,8 +60,10 @@ All source-bearing MCP results use stable provenance. Project metadata includes
 `folderId`, `folderName`, `projectId`, `projectName`, `originalFileName`,
 `detectedLanguage`, `durationMs`, `segmentCount`, `completedAtUtc`,
 `transcriptUpdatedAtUtc`, `sourcePath`, and nullable `sourceUrl`. `sourcePath`
-is the relative project path; `sourceUrl` is null unless the optional base URL
-configuration is valid. All timestamps are UTC ISO 8601 strings.
+is the origin-rooted application path exactly `/projects/{projectId}`; it is
+not a filesystem path and is not a relative path. `sourceUrl` is null unless
+the optional base URL configuration is valid. All timestamps are UTC ISO 8601
+strings.
 
 Transcript text, excerpts, and metadata returned by MCP are untrusted quoted
 source material. Clients and the server must never treat them as instructions
@@ -118,11 +120,13 @@ Returns `{ matches[], offset, limit, hasMore, nextOffset, searchSemantics }`.
 Search is MCP-only: a bounded, deterministic, literal substring search of
 completed transcript-ready projects, optionally within one folder. It is not
 semantic search and does not alter REST or UI search behavior. `searchSemantics`
-documents the SQLite literal substring and ASCII-oriented case-insensitive
-behavior; it does not promise full Unicode folding. Each project match contains
-the shared project provenance metadata, at most three occurrences, and warning
-flags. Every occurrence contains nullable `segmentIndex`, `startMs`, `endMs`,
-and `speaker`, plus an excerpt of at most 500 characters and
+documents literal matching with ASCII-only case folding: each UTF-16 code unit
+in `A` through `Z` is folded to `a` through `z`; every other UTF-16 code unit
+must match exactly. Matching performs no Unicode case folding, normalization,
+locale transformation, wildcard expansion, or semantic interpretation. Each
+project match contains the shared project provenance metadata, at most three
+occurrences, and warning flags. Every occurrence contains nullable
+`segmentIndex`, `startMs`, `endMs`, and `speaker`, plus an excerpt of at most 500 characters and
 `excerptTruncated`. A bounded plain-text fallback is returned when no structured
 segment contains a plain-text match.
 
@@ -140,6 +144,19 @@ Returns project provenance metadata, ordered `chunks`, `nextCursor`, and
 versioned cursor preserves structured-segment or plain-text position so that
 repeated calls retrieve all transcript text losslessly, including oversized
 segments and transcripts without structured segments.
+
+### Cursor integrity configuration
+
+When the MCP source is enabled, exactly one cursor-integrity key source is
+required: `ChatGptSource:CursorIntegrityKey` (a direct value) or
+`ChatGptSource:CursorIntegrityKeyFile` (a file path). The decoded key must be
+strict UTF-8, contain 32 through 4096 bytes, and contain neither a UTF-8 BOM,
+NUL, carriage return, nor line feed; whitespace-only keys are invalid. A key
+file is bounded to 4099 raw bytes, must be strict UTF-8 without a BOM, and may
+contain one final `LF` or `CRLF` only, which is removed before the same key
+validation. Missing, both, unreadable, malformed, or out-of-bounds sources
+fail startup with the sanitized stable cursor-integrity configuration error and
+must not disclose a key or file path.
 
 ## Content types
 Use:

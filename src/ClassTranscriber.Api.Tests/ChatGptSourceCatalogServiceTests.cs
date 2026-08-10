@@ -49,7 +49,7 @@ public sealed class ChatGptSourceCatalogServiceTests
         result.Projects[0].ProjectId.Should().Be(firstId);
         result.Projects[0].ProjectName.Should().Be("Unicode Alpha");
         result.Projects[0].FolderName.Should().Be("Fólder 日本語");
-        result.Projects[0].SourcePath.Should().Be($"/projects/{firstId}");
+        result.Projects[0].SourcePath.Should().Be("/projects/00000000-0000-0000-0000-000000000001");
         result.Projects[0].SourceUrl.Should().Be($"https://example.com/transcriptlab/projects/{firstId}");
         result.HasMore.Should().BeTrue();
         result.NextOffset.Should().Be(1);

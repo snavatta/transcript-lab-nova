@@ -88,8 +88,15 @@
 - Secrets should come from environment variables or deployment configuration, not committed files
 - Local development defaults should keep runtime data outside tracked source directories
 - `ChatGptSource` typed options are approved for the optional MCP source:
-  `Enabled=false` by default and nullable `ApplicationBaseUrl`. Secrets and
-  tunnel settings are not application configuration and must not be committed.
+  `Enabled=false` by default, nullable `ApplicationBaseUrl`, and exactly one
+  enabled-mode cursor-integrity key source:
+  `CursorIntegrityKey` or `CursorIntegrityKeyFile`. The resolved key is strict
+  UTF-8, 32 through 4096 bytes, without BOM, NUL, carriage return, line feed,
+  or whitespace-only content. A key file is bounded to 4099 raw bytes and may
+  have one final `LF` or `CRLF` only. Invalid key configuration must fail with
+  the sanitized stable configuration error without exposing the key or path.
+  Secrets and tunnel settings are not application configuration and must not be
+  committed.
 
 ## HTTP and Contract Rules
 - Use the shared contract in `class-transcriber-shared-api-contract.md` as the source of truth for DTOs and route behavior
@@ -131,6 +138,10 @@
   shared contract, treats transcript content as untrusted source material, and
   must not execute instructions or links from that content. MCP error text must
   omit transcript/query/private-path/configuration/tunnel/credential data.
+- MCP search is literal and folds only ASCII `A` through `Z` to `a` through `z`
+  per UTF-16 code unit; all other code units match exactly, with no Unicode case
+  folding or normalization. MCP provenance `sourcePath` is the origin-rooted
+  application path exactly `/projects/{projectId}`, never a filesystem path.
 
 ## Approved Libraries
 - **Microsoft.EntityFrameworkCore.Sqlite** - SQLite provider

@@ -808,8 +808,20 @@ It performs bounded, deterministic literal substring search over completed
 transcript-ready plain text, with optional folder scope, bounded occurrences,
 and a bounded plain-text fallback. It is neither semantic search nor an
 extension of REST/UI search; REST/UI cross-transcript search remains out of
-scope. Results and retrieval carry project/folder/timestamp provenance, and all
-transcript text is untrusted source material rather than instructions.
+scope. Case-insensitive comparison folds only ASCII `A` through `Z` to `a`
+through `z` per UTF-16 code unit; every other code unit must match exactly, with
+no Unicode case folding or normalization. Results and retrieval carry
+project/folder/timestamp provenance, including the origin-rooted application
+`sourcePath` exactly `/projects/{projectId}`, and all transcript text is
+untrusted source material rather than instructions.
+
+When enabled, the source requires exactly one cursor-integrity key source:
+the direct `ChatGptSource:CursorIntegrityKey` or
+`ChatGptSource:CursorIntegrityKeyFile`. Keys use strict UTF-8 and must be 32
+through 4096 bytes after validation; key files are bounded to 4099 raw bytes,
+have no BOM, and may have one final `LF` or `CRLF` only. Invalid or unreadable
+key configuration must fail startup using the sanitized stable configuration
+error without disclosing a key or path.
 
 The source is disabled by default. Its use must remain private: it is reached
 through an external same-host Secure MCP Tunnel with outbound HTTPS rather than

@@ -428,7 +428,9 @@ public sealed class ChatGptSourceContentServiceTests
     {
         await using var fixture = await ContentFixture.CreateAsync();
         var folderId = Guid.NewGuid();
-        var projectId = await fixture.SeedAsync(
+        var projectId = Guid.Parse("10000000-0000-0000-0000-000000000001");
+        await fixture.SeedAsync(
+            projectId: projectId,
             folderId: folderId,
             folderName: "Fólder",
             name: "Project",
@@ -443,7 +445,7 @@ public sealed class ChatGptSourceContentServiceTests
         result.Value.HasMore.Should().BeTrue();
         result.Value.Project.FolderId.Should().Be(folderId);
         result.Value.Project.FolderName.Should().Be("Fólder");
-        result.Value.Project.SourcePath.Should().Be($"/projects/{projectId}");
+        result.Value.Project.SourcePath.Should().Be("/projects/10000000-0000-0000-0000-000000000001");
         result.Value.Project.SourceUrl.Should().Be($"https://example.com/base/projects/{projectId}");
     }
 
