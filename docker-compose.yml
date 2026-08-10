@@ -10,6 +10,12 @@ services:
       - ASPNETCORE_ENVIRONMENT=Production
       - Storage__BasePath=/data
       - ConnectionStrings__DefaultConnection=Data Source=/data/transcriptlab.db
+    healthcheck:
+      test: ["CMD-SHELL", "curl -fsS http://127.0.0.1:5000/api/health >/dev/null || exit 1"]
+      interval: 10s
+      timeout: 3s
+      retries: 12
+      start_period: 30s
 
 volumes:
   transcriptlab-data:
