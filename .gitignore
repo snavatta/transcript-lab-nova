@@ -46,3 +46,6 @@ data/
 *.db-journal
 *.code-workspace
 /package-lock.json
+
+# Local agent state/evidence; never commit to the public repository
+.omo/

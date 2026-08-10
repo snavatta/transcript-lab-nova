@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ClassTranscriber.Api;
 using ClassTranscriber.Api.Endpoints;
 using ClassTranscriber.Api.Frontend;
 using ClassTranscriber.Api.Jobs;
@@ -46,6 +47,7 @@ try
 
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen();
+    builder.Services.AddChatGptSource(builder.Configuration);
 
     builder.Services.ConfigureHttpJsonOptions(options =>
     {
@@ -303,6 +305,7 @@ try
 
     app.UseCors();
     app.UseFrontendAppShellAssets();
+    app.MapChatGptSource();
 
     app.MapGet("/api/health", () => Results.Ok(new { status = "healthy" }))
         .WithName("HealthCheck")

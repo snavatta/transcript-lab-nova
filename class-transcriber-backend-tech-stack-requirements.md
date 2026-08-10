@@ -24,6 +24,12 @@
 - Do not mix controller-based and minimal-API endpoint styles in MVP
 - **System.Text.Json** - Standard JSON serializer for request/response contracts
 - **OpenAPI/Swagger** - Required for local contract inspection and backend development
+- **ModelContextProtocol.AspNetCore 2.1.0** - Approved only for the opt-in,
+  in-process, read-only private MCP transcript source defined by the shared
+  contract; its version must be centrally pinned
+- The MCP source uses stateless Streamable HTTP at exactly `/mcp`; legacy MCP
+  SSE transport is disabled. This does not change the separately approved SSE
+  pattern for OpenVino sidecar model-download progress.
 
 ## Application Architecture
 - **Single deployable ASP.NET Core application** - Required MVP architecture
@@ -70,6 +76,9 @@
 - **Serilog** - Standard structured logging implementation
 - Log uploads, queue transitions, transcription lifecycle events, export generation, and failure paths
 - Maintain a practical per-project correlation path where possible
+- For MCP, log only lifecycle and sanitized outcome metadata. Never log raw
+  queries, transcript text, tool results, private paths or configured URLs,
+  tunnel IDs, API keys, credentials, or unredacted evidence.
 
 ## Configuration
 - **appsettings.json + environment-specific overrides + environment variables** - Standard configuration sources
@@ -78,12 +87,21 @@
 - Optional debug-oriented worker logging such as per-segment transcription logs must be configurable and disabled by default
 - Secrets should come from environment variables or deployment configuration, not committed files
 - Local development defaults should keep runtime data outside tracked source directories
+- `ChatGptSource` typed options are approved for the optional MCP source:
+  `Enabled=false` by default and nullable `ApplicationBaseUrl`. Secrets and
+  tunnel settings are not application configuration and must not be committed.
 
 ## HTTP and Contract Rules
 - Use the shared contract in `class-transcriber-shared-api-contract.md` as the source of truth for DTOs and route behavior
 - Return DTOs/contracts rather than EF Core entities
 - Use UTC timestamps in all persisted and API-exposed date fields
 - Keep error responses in a consistent structured JSON format
+- `/mcp` is the documented exception to the `/api` REST convention. It is not a
+  REST endpoint and must remain disabled unless `ChatGptSource:Enabled` is true.
+- The external `tunnel-client` is an operator-installed, same-host Secure MCP
+  Tunnel process that targets the local `/mcp` endpoint over outbound HTTPS. Do
+  not bundle it into the application/container, add an inbound public listener,
+  commit tunnel profiles, or store its credentials in application settings.
 
 ## Development Tools
 - **dotnet CLI** - Standard local and CI build/test toolchain
@@ -109,12 +127,17 @@
 - Do not trust client-provided file names, media types, or extensions
 - Configure CORS explicitly for development when frontend and backend run on different local ports
 - Prefer same-origin deployment behavior in the final Dockerized setup where practical
+- The MCP source is read-only and private. It exposes only the four tools in the
+  shared contract, treats transcript content as untrusted source material, and
+  must not execute instructions or links from that content. MCP error text must
+  omit transcript/query/private-path/configuration/tunnel/credential data.
 
 ## Approved Libraries
 - **Microsoft.EntityFrameworkCore.Sqlite** - SQLite provider
 - **Microsoft.EntityFrameworkCore.Design** - Migration/design-time support
 - **Serilog.AspNetCore** - Structured request/application logging
 - **Swashbuckle.AspNetCore** - Standard OpenAPI package
+- **ModelContextProtocol.AspNetCore 2.1.0** - Pinned MCP server transport
 
 ## Library Policy
 - Prefer built-in .NET platform features before introducing third-party infrastructure libraries

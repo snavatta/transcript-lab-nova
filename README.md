@@ -88,6 +88,42 @@ In local development, SQLite and all runtime artifacts are stored under the repo
 When a WhisperNet model is selected for the first time, the backend can download the missing `ggml-*.bin` file into the configured `models/` directory automatically.
 The default upload request limit is 10 GiB. Override it with `Uploads__MaxRequestBodySizeBytes` if you need a different ceiling. Multipart upload buffering uses the configured storage temp directory by default.
 
+### Optional ChatGPT transcript source
+
+TranscriptLab Nova can expose its four read-only transcript-source tools through
+an opt-in, stateless MCP endpoint at `/mcp`. It is disabled by default and must
+remain private. The same-host Secure MCP Tunnel is installed and run outside
+the repository; it uses outbound HTTPS and does not require a public listener.
+The application and Docker/Compose images do not bundle or configure
+`tunnel-client`. CUDA and OpenVINO images use the same MCP implementation and
+need no distinct setup.
+
+For the complete operator procedure, safety boundaries, and fake-data ChatGPT
+evaluation prompts, see [`docs/chatgpt-transcript-source-runbook.md`](docs/chatgpt-transcript-source-runbook.md).
+
+The short operator path is:
+
+```bash
+ChatGptSource__Enabled=true
+ChatGptSource__ApplicationBaseUrl=https://transcriptlab.example.com  # optional placeholder
+# Apply these as deployment environment variables, then restart the app.
+curl -i http://127.0.0.1:5000/mcp
+tunnel-client doctor --explain --profile transcriptlab --profile-dir "<external-profile-directory>"
+./scripts/start-tunnel-client.sh "<external-profile-directory>/transcriptlab"
+```
+
+Install the latest-release `tunnel-client` outside this repository, keep its
+profile outside the repository, and provide `CONTROL_PLANE_API_KEY` only in
+the ignored repo-root `.env` file. The launcher installs and checksum-verifies
+the official platform archive when `tunnel-client` is not already available,
+then starts the external profile. Associate the tunnel with the intended Platform
+organization/workspace and grant tunnel read/manage or read/use permissions
+separately from the ChatGPT Developer mode workspace entitlement. The tunnel
+targets `http://127.0.0.1:5000/mcp` over outbound HTTPS; it does not publish
+`/mcp` or require an inbound listener. If those external permissions or the
+Developer mode surface are unavailable, the result is
+`BLOCKED_EXTERNAL_ENTITLEMENT` rather than a claimed end-to-end pass.
+
 ### Data Storage
 
 Runtime data is split by environment:
