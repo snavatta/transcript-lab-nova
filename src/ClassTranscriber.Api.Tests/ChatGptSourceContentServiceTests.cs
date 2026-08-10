@@ -41,6 +41,79 @@ public sealed class ChatGptSourceContentServiceTests
         (await fixture.Service.SearchAsync("needle")).Value!.SearchSemantics.Should().Contain("ASCII");
     }
 
+    [Fact]
+    public async Task SearchAsync_UsesTheSameAsciiOnlyLiteralSemanticsForCandidatesAndOccurrences()
+    {
+        await using var fixture = await ContentFixture.CreateAsync();
+        await fixture.SeedAsync(
+            name: "unicode-case",
+            plainText: "café … CAFÉ",
+            segments: [Segment("café … CAFÉ")]);
+
+        var lower = await fixture.Service.SearchAsync("café");
+        var upper = await fixture.Service.SearchAsync("CAFÉ");
+
+        lower.Value!.Matches.Should().ContainSingle();
+        lower.Value.Matches.Single().Occurrences.Should().ContainSingle()
+            .Which.Excerpt.Should().Contain("café");
+        upper.Value!.Matches.Should().ContainSingle();
+        upper.Value.Matches.Single().Occurrences.Should().ContainSingle()
+            .Which.Excerpt.Should().Contain("CAFÉ");
+    }
+
+    [Fact]
+    public async Task SearchAsync_FoldsAsciiLettersWithoutNormalizingUnicode()
+    {
+        await using var fixture = await ContentFixture.CreateAsync();
+        const string composed = "café";
+        const string decomposed = "CAFE\u0301";
+        await fixture.SeedAsync(
+            name: "normalization",
+            plainText: $"{composed} / {decomposed}",
+            segments: [Segment($"{composed} / {decomposed}")]);
+
+        var composedResult = await fixture.Service.SearchAsync("café");
+        var decomposedResult = await fixture.Service.SearchAsync("cafe\u0301");
+
+        composedResult.Value!.Matches.Single().Occurrences.Should().ContainSingle();
+        decomposedResult.Value!.Matches.Single().Occurrences.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task SearchAsync_FallsBackToPlainTextWhenStructuredTextDiffersByNonAsciiCase()
+    {
+        await using var fixture = await ContentFixture.CreateAsync();
+        await fixture.SeedAsync(plainText: "plain café", segments: [Segment("structured CAFÉ")]);
+
+        var match = (await fixture.Service.SearchAsync("café")).Value!.Matches.Single();
+
+        match.Occurrences.Should().ContainSingle().Which.SegmentIndex.Should().BeNull();
+        match.Warnings.PlainTextFallback.Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task SearchAsync_RejectsNulInQuery()
+    {
+        await using var fixture = await ContentFixture.CreateAsync();
+
+        var result = await fixture.Service.SearchAsync("ab\0cd");
+
+        result.Error!.Code.Should().Be(ContentErrorCodes.ValidationError);
+        result.Error.Message.Should().Be("The search request is invalid.");
+    }
+
+    [Fact]
+    public async Task SearchAsync_ConnectionKeepsSqliteAsciiLikeInvariant()
+    {
+        await using var fixture = await ContentFixture.CreateAsync();
+        await using var command = fixture.Db.Database.GetDbConnection().CreateCommand();
+        command.CommandText = "SELECT 'A' LIKE 'a' = 1";
+
+        var result = await command.ExecuteScalarAsync();
+
+        Convert.ToInt64(result).Should().Be(1);
+    }
+
     [Theory]
     [InlineData(" ")]
     [InlineData("a")]
@@ -116,6 +189,23 @@ public sealed class ChatGptSourceContentServiceTests
     }
 
     [Fact]
+    public async Task SearchAsync_ExcerptBoundariesNeverSplitEmojiSurrogatePairs()
+    {
+        await using var fixture = await ContentFixture.CreateAsync();
+        var splitsAtStart = "🙂" + new string('x', 246) + "needle" + new string('y', 500);
+        var splitsAtEnd = "needle" + new string('z', 493) + "🙂" + new string('w', 100);
+        await fixture.SeedAsync(
+            plainText: $"{splitsAtStart} {splitsAtEnd}",
+            segments: [Segment(splitsAtStart), Segment(splitsAtEnd)]);
+
+        var occurrences = (await fixture.Service.SearchAsync("needle")).Value!.Matches.Single().Occurrences;
+
+        occurrences.Should().HaveCount(2);
+        occurrences.Should().OnlyContain(occurrence => HasWellFormedBoundaries(occurrence.Excerpt));
+        occurrences.Should().OnlyContain(occurrence => occurrence.Excerpt.Contains("needle", StringComparison.Ordinal));
+    }
+
+    [Fact]
     public async Task SearchAsync_FallsBackWhenOnlyPlainTextContainsTheMatch()
     {
         await using var fixture = await ContentFixture.CreateAsync();
@@ -151,6 +241,22 @@ public sealed class ChatGptSourceContentServiceTests
         match.Warnings.StructuredSegmentsAbsent.Should().Be(absent);
         match.Warnings.StructuredSegmentsEmpty.Should().Be(empty);
         match.Warnings.StructuredSegmentsInvalid.Should().Be(invalid);
+    }
+
+    [Fact]
+    public async Task StructuredJson_WithMalformedSurrogateIsRejectedAndSearchUsesPlainTextFallback()
+    {
+        await using var fixture = await ContentFixture.CreateAsync();
+        const string malformedSurrogateJson =
+            "[{\"startMs\":0,\"endMs\":1,\"text\":\"needle\\uD800\",\"speaker\":null}]";
+        var projectId = await fixture.SeedAsync(plainText: "plain needle", structuredJson: malformedSurrogateJson);
+
+        var search = await fixture.Service.SearchAsync("needle");
+        var retrieval = await fixture.Service.GetTranscriptAsync(projectId);
+
+        search.Value!.Matches.Single().Warnings.StructuredSegmentsInvalid.Should().BeTrue();
+        search.Value.Matches.Single().Warnings.PlainTextFallback.Should().BeTrue();
+        retrieval.Error!.Code.Should().Be(ContentErrorCodes.CorruptTranscript);
     }
 
     [Fact]
@@ -291,6 +397,32 @@ public sealed class ChatGptSourceContentServiceTests
         reconstructed.Should().Be(original);
     }
 
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public async Task GetTranscriptAsync_PageBoundariesNeverSplitEmojiSurrogatePairs(bool structured)
+    {
+        await using var fixture = await ContentFixture.CreateAsync();
+        var original = new string('x', 999) + "🙂" + new string('y', 1200);
+        var projectId = await fixture.SeedAsync(
+            plainText: original,
+            segments: structured ? [Segment(original)] : []);
+        var chunks = new List<string>();
+        string? cursor = null;
+
+        do
+        {
+            var page = await fixture.Service.GetTranscriptAsync(projectId, cursor, segmentLimit: 1, characterLimit: 1000);
+            page.IsSuccess.Should().BeTrue();
+            page.Value!.Chunks.Should().OnlyContain(chunk => HasWellFormedBoundaries(chunk.Text));
+            chunks.AddRange(page.Value.Chunks.Select(chunk => chunk.Text));
+            cursor = page.Value.NextCursor;
+        }
+        while (cursor is not null);
+
+        string.Concat(chunks).Should().Be(original);
+    }
+
     [Fact]
     public async Task GetTranscriptAsync_HonorsSegmentAndAggregateCharacterLimitsWithStableProvenance()
     {
@@ -332,6 +464,9 @@ public sealed class ChatGptSourceContentServiceTests
 
     private static TranscriptSegmentDto Segment(string text, long startMs = 0, long endMs = 1000, string? speaker = null) =>
         new() { StartMs = startMs, EndMs = endMs, Text = text, Speaker = speaker };
+
+    private static bool HasWellFormedBoundaries(string text) =>
+        text.Length == 0 || (!char.IsLowSurrogate(text[0]) && !char.IsHighSurrogate(text[^1]));
 
     private static async Task<string> ReconstructAsync(
         ChatGptSourceContentService service,
