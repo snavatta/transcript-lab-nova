@@ -2,6 +2,7 @@ using System.ComponentModel;
 using System.ComponentModel.DataAnnotations;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Microsoft.Extensions.Logging;
 
 namespace ClassTranscriber.Api.Mcp;
 
@@ -21,7 +22,8 @@ public sealed class GetTranscriptTool
         OutputSchemaType = typeof(GetTranscriptOutput))]
     [Description(Description)]
     public static async Task<CallToolResult> GetAsync(
-        ChatGptSourceContentService contentService,
+        IChatGptSourceContentToolService contentService,
+        ILogger<GetTranscriptTool> logger,
         [Description("Project GUID returned by a catalog or transcript-search result.")] Guid projectId,
         [Description("Opaque continuation cursor returned by the preceding get_transcript call.")] string? cursor = null,
         [Description("Maximum chunks to return; from 1 through 200.")]
@@ -30,6 +32,8 @@ public sealed class GetTranscriptTool
         [Range(1_000, 20_000)] int characterLimit = 12_000,
         CancellationToken cancellationToken = default)
     {
+        var outcomeCode = ContentErrorCodes.InternalError;
+
         try
         {
             var result = await contentService.GetTranscriptAsync(
@@ -39,9 +43,15 @@ public sealed class GetTranscriptTool
                 characterLimit,
                 cancellationToken);
             if (!result.IsSuccess)
-                return ContentToolResult.Error(result.Error!);
+            {
+                outcomeCode = ChatGptSourceToolOutcome.ResolveServiceCode(result.Error);
+                return outcomeCode == result.Error?.Code
+                    ? ContentToolResult.Error(result.Error)
+                    : ContentToolResult.InternalError();
+            }
 
             var output = GetTranscriptOutput.From(result.Value!);
+            outcomeCode = ChatGptSourceToolOutcome.Success;
             return ContentToolResult.Success(
                 $"Returned {output.Chunks.Count} transcript chunk(s) for project {output.ProjectId}." +
                 (output.HasMore ? " Use nextCursor to continue." : " Transcript retrieval is complete."),
@@ -49,11 +59,22 @@ public sealed class GetTranscriptTool
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            outcomeCode = ChatGptSourceToolOutcome.Cancelled;
             throw;
+        }
+        catch (OperationCanceledException)
+        {
+            outcomeCode = ContentErrorCodes.InternalError;
+            return ContentToolResult.InternalError();
         }
         catch
         {
+            outcomeCode = ContentErrorCodes.InternalError;
             return ContentToolResult.InternalError();
+        }
+        finally
+        {
+            ChatGptSourceToolOutcome.Log(logger, "get_transcript", outcomeCode);
         }
     }
 }

@@ -4,12 +4,17 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ClassTranscriber.Api.Mcp;
 
-public sealed class ChatGptSourceBrowseTools(IChatGptSourceCatalogService catalogService)
+public sealed class ChatGptSourceBrowseTools(
+    IChatGptSourceCatalogService catalogService,
+    ILogger<ChatGptSourceBrowseTools>? logger = null)
 {
     private static readonly JsonSerializerOptions StructuredContentSerializerOptions = CreateStructuredContentSerializerOptions();
+    private readonly ILogger<ChatGptSourceBrowseTools> logger = logger ?? NullLogger<ChatGptSourceBrowseTools>.Instance;
 
     [McpServerTool(
         Name = "list_folders",
@@ -25,12 +30,18 @@ public sealed class ChatGptSourceBrowseTools(IChatGptSourceCatalogService catalo
         [Description("Maximum folders to return, from 1 through 100.")][Range(1, 100)] int limit = 50,
         CancellationToken cancellationToken = default)
     {
-        if (offset < 0 || limit is < 1 or > 100)
-            return ValidationError("Invalid list_folders arguments.");
+        var outcomeCode = ContentErrorCodes.InternalError;
 
         try
         {
+            if (offset < 0 || limit is < 1 or > 100)
+            {
+                outcomeCode = ContentErrorCodes.ValidationError;
+                return ValidationError("Invalid list_folders arguments.");
+            }
+
             var page = await catalogService.ListFoldersAsync(offset, limit, cancellationToken);
+            outcomeCode = ChatGptSourceToolOutcome.Success;
             return Success(
                 page,
                 $"Returned {page.Folders.Count} {Pluralize(page.Folders.Count, "folder")} "
@@ -38,11 +49,22 @@ public sealed class ChatGptSourceBrowseTools(IChatGptSourceCatalogService catalo
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            outcomeCode = ChatGptSourceToolOutcome.Cancelled;
             throw;
+        }
+        catch (OperationCanceledException)
+        {
+            outcomeCode = ContentErrorCodes.InternalError;
+            return InternalError();
         }
         catch (Exception)
         {
+            outcomeCode = ContentErrorCodes.InternalError;
             return InternalError();
+        }
+        finally
+        {
+            ChatGptSourceToolOutcome.Log(this.logger, "list_folders", outcomeCode);
         }
     }
 
@@ -62,22 +84,26 @@ public sealed class ChatGptSourceBrowseTools(IChatGptSourceCatalogService catalo
         [Description("Maximum projects to return, from 1 through 50.")][Range(1, 50)] int limit = 20,
         CancellationToken cancellationToken = default)
     {
-        if (!TryParseFolderId(folderId, out var parsedFolderId)
-            || nameQuery?.Trim().Length > 200
-            || offset < 0
-            || limit is < 1 or > 50)
-        {
-            return ValidationError("Invalid list_projects arguments.");
-        }
+        var outcomeCode = ContentErrorCodes.InternalError;
 
         try
         {
+            if (!TryParseFolderId(folderId, out var parsedFolderId)
+                || nameQuery?.Trim().Length > 200
+                || offset < 0
+                || limit is < 1 or > 50)
+            {
+                outcomeCode = ContentErrorCodes.ValidationError;
+                return ValidationError("Invalid list_projects arguments.");
+            }
+
             var page = await catalogService.ListProjectsAsync(
                 parsedFolderId,
                 nameQuery?.Trim(),
                 offset,
                 limit,
                 cancellationToken);
+            outcomeCode = ChatGptSourceToolOutcome.Success;
             return Success(
                 page,
                 $"Returned {page.Projects.Count} {Pluralize(page.Projects.Count, "project")} "
@@ -85,11 +111,22 @@ public sealed class ChatGptSourceBrowseTools(IChatGptSourceCatalogService catalo
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            outcomeCode = ChatGptSourceToolOutcome.Cancelled;
             throw;
+        }
+        catch (OperationCanceledException)
+        {
+            outcomeCode = ContentErrorCodes.InternalError;
+            return InternalError();
         }
         catch (Exception)
         {
+            outcomeCode = ContentErrorCodes.InternalError;
             return InternalError();
+        }
+        finally
+        {
+            ChatGptSourceToolOutcome.Log(this.logger, "list_projects", outcomeCode);
         }
     }
 

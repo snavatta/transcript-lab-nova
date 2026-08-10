@@ -3,6 +3,7 @@ using System.ComponentModel.DataAnnotations;
 using System.Text.Json;
 using ModelContextProtocol.Protocol;
 using ModelContextProtocol.Server;
+using Microsoft.Extensions.Logging;
 
 namespace ClassTranscriber.Api.Mcp;
 
@@ -22,7 +23,8 @@ public sealed class SearchTranscriptsTool
         OutputSchemaType = typeof(SearchTranscriptsOutput))]
     [Description(Description)]
     public static async Task<CallToolResult> SearchAsync(
-        ChatGptSourceContentService contentService,
+        IChatGptSourceContentToolService contentService,
+        ILogger<SearchTranscriptsTool> logger,
         [Description("Literal substring to find, trimmed; 2 to 200 characters.")]
         [MinLength(2), MaxLength(200)] string query,
         [Description("Optional folder GUID used to scope matching projects.")] Guid? folderId = null,
@@ -32,13 +34,21 @@ public sealed class SearchTranscriptsTool
         [Range(1, 20)] int limit = 10,
         CancellationToken cancellationToken = default)
     {
+        var outcomeCode = ContentErrorCodes.InternalError;
+
         try
         {
             var result = await contentService.SearchAsync(query, folderId, offset, limit, cancellationToken);
             if (!result.IsSuccess)
-                return ContentToolResult.Error(result.Error!);
+            {
+                outcomeCode = ChatGptSourceToolOutcome.ResolveServiceCode(result.Error);
+                return outcomeCode == result.Error?.Code
+                    ? ContentToolResult.Error(result.Error)
+                    : ContentToolResult.InternalError();
+            }
 
             var output = SearchTranscriptsOutput.From(result.Value!);
+            outcomeCode = ChatGptSourceToolOutcome.Success;
             return ContentToolResult.Success(
                 $"Found {output.Matches.Count} transcript project match(es) at offset {output.Offset}." +
                 (output.HasMore ? " Use nextOffset to continue." : " No more matches."),
@@ -46,11 +56,22 @@ public sealed class SearchTranscriptsTool
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
+            outcomeCode = ChatGptSourceToolOutcome.Cancelled;
             throw;
+        }
+        catch (OperationCanceledException)
+        {
+            outcomeCode = ContentErrorCodes.InternalError;
+            return ContentToolResult.InternalError();
         }
         catch
         {
+            outcomeCode = ContentErrorCodes.InternalError;
             return ContentToolResult.InternalError();
+        }
+        finally
+        {
+            ChatGptSourceToolOutcome.Log(logger, "search_transcripts", outcomeCode);
         }
     }
 }

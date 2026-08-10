@@ -12,7 +12,7 @@ public static class ChatGptSourceBrowseRegistrationExtensions
             new ChatGptSourceCatalogService(
                 services.GetRequiredService<AppDbContext>(),
                 services.GetRequiredService<IOptions<ChatGptSourceOptions>>().Value));
-        builder.Services.AddScoped(services =>
+        builder.Services.AddScoped<ChatGptSourceContentService>(services =>
         {
             var options = services.GetRequiredService<IOptions<ChatGptSourceOptions>>().Value;
             var configuredBaseUrl = options.ApplicationBaseUrl;
@@ -24,6 +24,7 @@ public static class ChatGptSourceBrowseRegistrationExtensions
                 applicationBaseUrl,
                 options.CursorIntegrityKey);
         });
+        builder.Services.AddScoped<IChatGptSourceContentToolService, ChatGptSourceContentToolService>();
 
         return builder
             .WithTools<ChatGptSourceBrowseTools>()

@@ -153,9 +153,9 @@ public sealed class ChatGptSourceContentToolTests
 
         AssertSanitizedError(malformedQuery, "validation_error", queryCanary);
         AssertSanitizedError(malformedCursor, "validation_error", "not-a-valid-cursor");
-        fixture.LogMessages.Should().NotContain(message =>
-            message.Contains(queryCanary, StringComparison.Ordinal) ||
-            message.Contains("not-a-valid-cursor", StringComparison.Ordinal));
+        fixture.LogEntries.Should().NotContain(entry =>
+            entry.Message.Contains(queryCanary, StringComparison.Ordinal) ||
+            entry.Message.Contains("not-a-valid-cursor", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -187,9 +187,9 @@ public sealed class ChatGptSourceContentToolTests
         AssertSanitizedError(notReady, "transcript_not_ready", sourceCanary);
         AssertSanitizedError(corrupt, "corrupt_transcript", sourceCanary);
         corrupt.GetRawText().Should().NotContain("private-invalid-json");
-        fixture.LogMessages.Should().NotContain(message =>
-            message.Contains(sourceCanary, StringComparison.Ordinal) ||
-            message.Contains("private-invalid-json", StringComparison.Ordinal));
+        fixture.LogEntries.Should().NotContain(entry =>
+            entry.Message.Contains(sourceCanary, StringComparison.Ordinal) ||
+            entry.Message.Contains("private-invalid-json", StringComparison.Ordinal));
     }
 
     [Fact]
@@ -235,9 +235,118 @@ public sealed class ChatGptSourceContentToolTests
         (await fixture.ProjectCountAsync()).Should().Be(projectCountBefore);
         (await fixture.ListToolsAsync()).EnumerateArray().Should().NotContain(tool =>
             tool.GetProperty("name").GetString() == "delete_project");
-        fixture.LogMessages.Should().NotContain(message =>
-            message.Contains(injectionCanary, StringComparison.Ordinal) ||
-            message.Contains("CHANGEME_SECRET", StringComparison.Ordinal));
+        fixture.LogEntries.Should().NotContain(entry =>
+            entry.Message.Contains(injectionCanary, StringComparison.Ordinal) ||
+            entry.Message.Contains("CHANGEME_SECRET", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public async Task Content_tools_emit_one_sanitized_outcome_per_invocation()
+    {
+        var privateCanary = "private-query-sentinel-" + new string('p', 201);
+        await using var fixture = await ToolFixture.CreateAsync();
+        var projectId = await fixture.SeedAsync(
+            Guid.NewGuid(), "Safe", "Safe", "safe.wav", "safe transcript", [Segment("safe transcript")]);
+
+        await fixture.CallToolAsync("search_transcripts", new { query = "safe" });
+        await fixture.CallToolAsync("search_transcripts", new { query = privateCanary });
+        await fixture.CallToolAsync("get_transcript", new { projectId });
+        await fixture.CallToolAsync("get_transcript", new { projectId = Guid.NewGuid() });
+
+        var outcomes = fixture.LogEntries.Where(entry => entry.EventId.Id == 2400).ToArray();
+        outcomes.Should().HaveCount(4);
+        foreach (var outcome in outcomes)
+        {
+            outcome.EventId.Name.Should().Be("ChatGptSourceToolCompleted");
+            outcome.Properties.Keys.Should().BeEquivalentTo("ToolName", "OutcomeCode");
+            outcome.Exception.Should().BeNull();
+        }
+        outcomes.Select(entry => $"{entry.Properties["ToolName"]}|{entry.Properties["OutcomeCode"]}|{entry.Level}")
+            .Should().BeEquivalentTo(
+                "search_transcripts|success|Information",
+                "search_transcripts|validation_error|Warning",
+                "get_transcript|success|Information",
+                "get_transcript|not_found|Warning");
+        outcomes.Select(entry => entry.Message).Should().NotContain(message =>
+            message.Contains(privateCanary, StringComparison.Ordinal));
+        outcomes.Select(entry => entry.Properties.Values.OfType<string>()).SelectMany(values => values)
+            .Should().NotContain(value => value.Contains(privateCanary, StringComparison.Ordinal));
+    }
+
+    [Theory]
+    [InlineData(ContentErrorCodes.ValidationError)]
+    [InlineData(ContentErrorCodes.NotFound)]
+    [InlineData(ContentErrorCodes.TranscriptNotReady)]
+    [InlineData(ContentErrorCodes.CorruptTranscript)]
+    [InlineData(ContentErrorCodes.InternalError)]
+    public async Task Get_tool_logs_each_known_service_outcome(string code)
+    {
+        var entries = new ConcurrentQueue<CapturedLogEntry>();
+        using var loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(new CapturingLoggerProvider(entries)));
+        var service = new StubContentToolService(
+            search: _ => throw new InvalidOperationException(),
+            get: _ => Task.FromResult(ContentQueryResult<TranscriptContentPage>.Failure(code, "private service detail")));
+
+        var result = await GetTranscriptTool.GetAsync(
+            service,
+            loggerFactory.CreateLogger<GetTranscriptTool>(),
+            Guid.NewGuid());
+
+        result.IsError.Should().BeTrue();
+        var outcome = entries.Should().ContainSingle().Subject;
+        outcome.EventId.Should().Be(new EventId(2400, "ChatGptSourceToolCompleted"));
+        outcome.Level.Should().Be(LogLevel.Warning);
+        outcome.Properties.Should().BeEquivalentTo(new Dictionary<string, object?>
+        {
+            ["ToolName"] = "get_transcript",
+            ["OutcomeCode"] = code,
+        });
+        outcome.Message.Should().NotContain("private service detail");
+        outcome.Exception.Should().BeNull();
+    }
+
+    [Fact]
+    public async Task Content_tools_map_unknown_fault_and_cancellation_outcomes_without_duplicate_records()
+    {
+        var entries = new ConcurrentQueue<CapturedLogEntry>();
+        using var loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(new CapturingLoggerProvider(entries)));
+        var logger = loggerFactory.CreateLogger<SearchTranscriptsTool>();
+        var unknown = new StubContentToolService(
+            search: _ => Task.FromResult(ContentQueryResult<TranscriptSearchPage>.Failure("private-unknown-code", "private detail")),
+            get: _ => throw new InvalidOperationException());
+
+        var unknownResult = await SearchTranscriptsTool.SearchAsync(unknown, logger, "valid");
+        unknownResult.IsError.Should().BeTrue();
+        var unknownOutcome = entries.Should().ContainSingle().Subject;
+        unknownOutcome.Properties["OutcomeCode"].Should().Be(ContentErrorCodes.InternalError);
+        unknownOutcome.Level.Should().Be(LogLevel.Warning);
+        unknownOutcome.Message.Should().NotContain("private-unknown-code").And.NotContain("private detail");
+        entries.TryDequeue(out _).Should().BeTrue();
+
+        var faulted = new StubContentToolService(
+            search: _ => Task.FromException<ContentQueryResult<TranscriptSearchPage>>(new InvalidOperationException("private exception")),
+            get: _ => throw new InvalidOperationException());
+        var faultResult = await SearchTranscriptsTool.SearchAsync(faulted, logger, "valid");
+        faultResult.IsError.Should().BeTrue();
+        var faultOutcome = entries.Should().ContainSingle().Subject;
+        faultOutcome.Properties["OutcomeCode"].Should().Be(ContentErrorCodes.InternalError);
+        faultOutcome.Exception.Should().BeNull();
+        entries.TryDequeue(out _).Should().BeTrue();
+
+        var cancelledService = new StubContentToolService(
+            search: _ => Task.FromException<ContentQueryResult<TranscriptSearchPage>>(new OperationCanceledException()),
+            get: _ => throw new InvalidOperationException());
+        var unrequestedResult = await SearchTranscriptsTool.SearchAsync(cancelledService, logger, "valid");
+        unrequestedResult.IsError.Should().BeTrue();
+        entries.Should().ContainSingle().Which.Properties["OutcomeCode"].Should().Be(ContentErrorCodes.InternalError);
+        entries.TryDequeue(out _).Should().BeTrue();
+
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var requested = () => SearchTranscriptsTool.SearchAsync(cancelledService, logger, "valid", cancellationToken: cancellation.Token);
+        await requested.Should().ThrowAsync<OperationCanceledException>();
+        entries.Should().ContainSingle().Which.Properties["OutcomeCode"].Should().Be("cancelled");
+        entries.Should().ContainSingle().Which.Level.Should().Be(LogLevel.Information);
     }
 
     private static TranscriptSegmentDto Segment(
@@ -286,21 +395,21 @@ public sealed class ChatGptSourceContentToolTests
             SqliteConnection connection,
             WebApplication app,
             HttpClient client,
-            ConcurrentQueue<string> logMessages)
+            ConcurrentQueue<CapturedLogEntry> logEntries)
         {
             _connection = connection;
             _app = app;
             _client = client;
-            LogMessages = logMessages;
+            LogEntries = logEntries;
         }
 
-        public ConcurrentQueue<string> LogMessages { get; }
+        public ConcurrentQueue<CapturedLogEntry> LogEntries { get; }
 
         public static async Task<ToolFixture> CreateAsync(Uri? applicationBaseUrl = null)
         {
             var connection = new SqliteConnection("Data Source=:memory:");
             await connection.OpenAsync();
-            var logMessages = new ConcurrentQueue<string>();
+            var logEntries = new ConcurrentQueue<CapturedLogEntry>();
             var builder = WebApplication.CreateBuilder(new WebApplicationOptions
             {
                 Args = [],
@@ -308,7 +417,7 @@ public sealed class ChatGptSourceContentToolTests
             });
             builder.WebHost.UseTestServer();
             builder.Logging.ClearProviders();
-            builder.Logging.AddProvider(new CollectingLoggerProvider(logMessages));
+            builder.Logging.AddProvider(new CapturingLoggerProvider(logEntries));
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
                 ["ChatGptSource:Enabled"] = "true",
@@ -331,7 +440,7 @@ public sealed class ChatGptSourceContentToolTests
 
             var client = app.GetTestClient();
             client.DefaultRequestHeaders.Accept.ParseAdd("application/json, text/event-stream");
-            var fixture = new ToolFixture(connection, app, client, logMessages);
+            var fixture = new ToolFixture(connection, app, client, logEntries);
             await fixture.SendAsync("initialize", new
             {
                 protocolVersion = "2025-06-18",
@@ -446,21 +555,24 @@ public sealed class ChatGptSourceContentToolTests
         }
     }
 
-    private sealed class CollectingLoggerProvider(ConcurrentQueue<string> messages) : ILoggerProvider
+    private sealed class StubContentToolService(
+        Func<CancellationToken, Task<ContentQueryResult<TranscriptSearchPage>>> search,
+        Func<CancellationToken, Task<ContentQueryResult<TranscriptContentPage>>> get)
+        : IChatGptSourceContentToolService
     {
-        public ILogger CreateLogger(string categoryName) => new CollectingLogger(messages);
-        public void Dispose() { }
+        public Task<ContentQueryResult<TranscriptSearchPage>> SearchAsync(
+            string query,
+            Guid? folderId = null,
+            int offset = 0,
+            int limit = 10,
+            CancellationToken cancellationToken = default) => search(cancellationToken);
+
+        public Task<ContentQueryResult<TranscriptContentPage>> GetTranscriptAsync(
+            Guid projectId,
+            string? cursor = null,
+            int segmentLimit = 100,
+            int characterLimit = 12_000,
+            CancellationToken cancellationToken = default) => get(cancellationToken);
     }
 
-    private sealed class CollectingLogger(ConcurrentQueue<string> messages) : ILogger
-    {
-        public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
-        public bool IsEnabled(LogLevel logLevel) => true;
-        public void Log<TState>(
-            LogLevel logLevel,
-            EventId eventId,
-            TState state,
-            Exception? exception,
-            Func<TState, Exception?, string> formatter) => messages.Enqueue(formatter(state, exception));
-    }
 }

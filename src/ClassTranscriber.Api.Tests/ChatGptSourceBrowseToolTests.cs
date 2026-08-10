@@ -1,3 +1,4 @@
+using System.Collections.Concurrent;
 using System.Net.Http.Json;
 using System.Text.Json;
 using ClassTranscriber.Api.Contracts;
@@ -11,6 +12,7 @@ using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 
 namespace ClassTranscriber.Api.Tests;
 
@@ -25,7 +27,6 @@ public sealed class ChatGptSourceBrowseToolTests
         using var json = await ReadMcpJsonAsync(response);
 
         var tools = json.RootElement.GetProperty("result").GetProperty("tools");
-        Console.WriteLine($"DISCOVERED_BROWSE_TOOLS={tools.GetRawText()}");
         tools.EnumerateArray().Select(tool => tool.GetProperty("name").GetString())
             .Should().BeEquivalentTo("list_folders", "list_projects", "search_transcripts", "get_transcript");
         foreach (var tool in tools.EnumerateArray())
@@ -71,7 +72,6 @@ public sealed class ChatGptSourceBrowseToolTests
         foldersResult.GetProperty("content")[0].GetProperty("text").GetString()
             .Should().Be("Returned 1 folder (offset 0, limit 1); more results are available.");
         var folders = foldersResult.GetProperty("structuredContent");
-        Console.WriteLine($"LIST_FOLDERS_RESULT={folders.GetRawText()}");
         folders.GetProperty("hasMore").GetBoolean().Should().BeTrue();
         folders.GetProperty("nextOffset").GetInt32().Should().Be(1);
         var returnedFolderId = folders.GetProperty("folders")[0].GetProperty("folderId").GetGuid();
@@ -93,7 +93,6 @@ public sealed class ChatGptSourceBrowseToolTests
         var structuredProjects = projectsResult.GetProperty("structuredContent");
         structuredProjects.GetProperty("nextOffset").ValueKind.Should().Be(JsonValueKind.Null);
         var project = structuredProjects.GetProperty("projects")[0];
-        Console.WriteLine($"LIST_PROJECTS_RESULT={structuredProjects.GetRawText()}");
         project.GetProperty("folderId").GetGuid().Should().Be(firstFolderId);
         project.GetProperty("projectName").GetString().Should().Be("Lecture one");
         project.GetProperty("completedAtUtc").GetString().Should().EndWith("Z");
@@ -122,9 +121,66 @@ public sealed class ChatGptSourceBrowseToolTests
         result.GetProperty("isError").GetBoolean().Should().BeTrue();
         result.GetProperty("content")[0].GetProperty("text").GetString()
             .Should().StartWith("validation_error:");
-        Console.WriteLine($"SANITIZED_ERROR={result.GetProperty("content")[0].GetProperty("text").GetString()}");
         responseBody.Should().NotContain("not-a-guid-private-value");
         responseBody.Should().NotContain(new string('x', 201));
+    }
+
+    [Fact]
+    public async Task Browse_handlers_log_one_sanitized_outcome_for_success_validation_fault_and_cancellation()
+    {
+        var entries = new ConcurrentQueue<CapturedLogEntry>();
+        using var loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(new CapturingLoggerProvider(entries)));
+        var success = new StubCatalogService(
+            folders: _ => Task.FromResult(new ChatGptSourceFolderPage
+            {
+                Folders = [], Offset = 0, Limit = 50, HasMore = false, NextOffset = null,
+            }),
+            projects: _ => Task.FromResult(new ChatGptSourceProjectPage
+            {
+                Projects = [], Offset = 0, Limit = 20, HasMore = false, NextOffset = null,
+            }));
+        var successTools = new ChatGptSourceBrowseTools(success, loggerFactory.CreateLogger<ChatGptSourceBrowseTools>());
+
+        (await successTools.ListFoldersAsync()).IsError.Should().BeFalse();
+        (await successTools.ListProjectsAsync()).IsError.Should().BeFalse();
+        (await successTools.ListFoldersAsync(offset: -1)).IsError.Should().BeTrue();
+        (await successTools.ListProjectsAsync(folderId: "private-invalid-folder-id")).IsError.Should().BeTrue();
+
+        var faulted = new StubCatalogService(
+            folders: _ => Task.FromException<ChatGptSourceFolderPage>(new InvalidOperationException("private exception")),
+            projects: _ => Task.FromException<ChatGptSourceProjectPage>(new OperationCanceledException("private cancellation")));
+        var faultedTools = new ChatGptSourceBrowseTools(faulted, loggerFactory.CreateLogger<ChatGptSourceBrowseTools>());
+        (await faultedTools.ListFoldersAsync()).IsError.Should().BeTrue();
+        (await faultedTools.ListProjectsAsync()).IsError.Should().BeTrue();
+
+        using var cancellation = new CancellationTokenSource();
+        cancellation.Cancel();
+        var cancelledService = new StubCatalogService(
+            folders: _ => Task.FromException<ChatGptSourceFolderPage>(new OperationCanceledException()),
+            projects: _ => throw new InvalidOperationException());
+        var cancelledTools = new ChatGptSourceBrowseTools(
+            cancelledService,
+            loggerFactory.CreateLogger<ChatGptSourceBrowseTools>());
+        var cancelled = () => cancelledTools.ListFoldersAsync(cancellationToken: cancellation.Token);
+        await cancelled.Should().ThrowAsync<OperationCanceledException>();
+
+        entries.Should().HaveCount(7);
+        foreach (var entry in entries)
+        {
+            entry.EventId.Should().Be(new EventId(2400, "ChatGptSourceToolCompleted"));
+            entry.Properties.Keys.Should().BeEquivalentTo("ToolName", "OutcomeCode");
+            entry.Exception.Should().BeNull();
+            entry.Message.Should().NotContain("private");
+        }
+        entries.Select(entry => $"{entry.Properties["ToolName"]}|{entry.Properties["OutcomeCode"]}|{entry.Level}")
+            .Should().BeEquivalentTo(
+                "list_folders|success|Information",
+                "list_projects|success|Information",
+                "list_folders|validation_error|Warning",
+                "list_projects|validation_error|Warning",
+                "list_folders|internal_error|Warning",
+                "list_projects|internal_error|Warning",
+                "list_folders|cancelled|Information");
     }
 
     [Fact]
@@ -273,5 +329,23 @@ public sealed class ChatGptSourceBrowseToolTests
             await _app.DisposeAsync();
             await _connection.DisposeAsync();
         }
+    }
+
+    private sealed class StubCatalogService(
+        Func<CancellationToken, Task<ChatGptSourceFolderPage>> folders,
+        Func<CancellationToken, Task<ChatGptSourceProjectPage>> projects)
+        : IChatGptSourceCatalogService
+    {
+        public Task<ChatGptSourceFolderPage> ListFoldersAsync(
+            int offset = 0,
+            int limit = 50,
+            CancellationToken cancellationToken = default) => folders(cancellationToken);
+
+        public Task<ChatGptSourceProjectPage> ListProjectsAsync(
+            Guid? folderId = null,
+            string? nameQuery = null,
+            int offset = 0,
+            int limit = 20,
+            CancellationToken cancellationToken = default) => projects(cancellationToken);
     }
 }

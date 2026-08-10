@@ -42,7 +42,6 @@ public sealed class ChatGptSourceHostTests
 
             using var response = await factory.Client.SendAsync(request);
 
-            Console.WriteLine($"HTTP {methodName} {path} STATUS={(int)response.StatusCode} CONTENT_TYPE={response.Content.Headers.ContentType?.ToString() ?? "<none>"}");
             response.StatusCode.Should().Be(HttpStatusCode.NotFound);
             response.Content.Headers.ContentType?.MediaType.Should().NotBe("text/html");
         }
@@ -77,7 +76,6 @@ public sealed class ChatGptSourceHostTests
             });
 
         initializeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        Console.WriteLine($"HTTP POST /mcp initialize STATUS={(int)initializeResponse.StatusCode} CONTENT_TYPE={initializeResponse.Content.Headers.ContentType?.ToString() ?? "<none>"}");
         using var initializeJson = JsonDocument.Parse(await ReadMcpJsonAsync(initializeResponse));
         initializeJson.RootElement.GetProperty("result").GetProperty("serverInfo").GetProperty("name")
             .GetString().Should().Be("TranscriptLab Nova ChatGPT Transcript Source");
@@ -95,7 +93,6 @@ public sealed class ChatGptSourceHostTests
             });
 
         toolsResponse.StatusCode.Should().Be(HttpStatusCode.OK);
-        Console.WriteLine($"HTTP POST /mcp tools/list STATUS={(int)toolsResponse.StatusCode} CONTENT_TYPE={toolsResponse.Content.Headers.ContentType?.ToString() ?? "<none>"}");
         var toolsBody = await ReadMcpJsonAsync(toolsResponse);
         using var toolsJson = JsonDocument.Parse(toolsBody);
         var tools = toolsJson.RootElement.GetProperty("result").GetProperty("tools");
@@ -130,7 +127,6 @@ public sealed class ChatGptSourceHostTests
             var toolResult = result.RootElement.GetProperty("result");
             toolResult.GetProperty("isError").GetBoolean().Should().BeFalse(call.Name);
             toolResult.TryGetProperty("structuredContent", out _).Should().BeTrue(call.Name);
-            Console.WriteLine($"HTTP tools/call {call.Name} IS_ERROR=false");
         }
     }
 
