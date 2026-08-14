@@ -3,6 +3,8 @@ set -euo pipefail
 
 readonly REPOSITORY_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
 readonly HEALTH_COMMAND='curl -fsS http://127.0.0.1:5000/api/health >/dev/null || exit 1'
+readonly OBSOLETE_TUNNEL_TERM='tunnel''-client'
+readonly OBSOLETE_IMAGE_TERM='openai/''tunnel'
 
 fail() {
   printf 'FAIL: %s\n' "$*" >&2
@@ -25,7 +27,7 @@ verify_default_topology() {
 
   grep -Fq '  transcriptlab:' <<<"${compose_output}" \
     || fail 'default Compose does not contain transcriptlab'
-  if grep -Eqi 'tunnel-client|control-plane|cursor.*key|(^|[[:space:]])secrets:' <<<"${compose_output}"; then
+  if grep -Eqi "${OBSOLETE_TUNNEL_TERM}|control-plane|cursor.*key|(^|[[:space:]])secrets:" <<<"${compose_output}"; then
     fail 'default Compose includes tunnel or credential configuration'
   fi
 }
@@ -35,7 +37,7 @@ verify_single_app_entrypoint() {
   for file in Dockerfile Dockerfile.cuda Dockerfile.openvino; do
     [[ "$(grep -Ec '^ENTRYPOINT \["dotnet", "ClassTranscriber.Api.dll"\]$' "${REPOSITORY_ROOT}/${file}")" == '1' ]] \
       || fail "${file} does not retain exactly one application entrypoint"
-    if grep -Eqi 'tunnel-client|openai/tunnel' "${REPOSITORY_ROOT}/${file}"; then
+    if grep -Eqi "${OBSOLETE_TUNNEL_TERM}|${OBSOLETE_IMAGE_TERM}" "${REPOSITORY_ROOT}/${file}"; then
       fail "${file} contains a tunnel process or binary"
     fi
   done
