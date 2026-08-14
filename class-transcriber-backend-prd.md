@@ -823,12 +823,12 @@ have no BOM, and may have one final `LF` or `CRLF` only. Invalid or unreadable
 key configuration must fail startup using the sanitized stable configuration
 error without disclosing a key or path.
 
-The source is disabled by default. Its use must remain private: it is reached
-through an external same-host Secure MCP Tunnel with outbound HTTPS rather than
-an inbound public listener. The backend must not run, bundle, configure, or
-store tunnel credentials/profiles. MCP logs and errors must not contain raw
-queries, transcript text, tool results, private paths/URLs, tunnel identifiers,
-or credentials.
+The source is disabled by default. When enabled for container deployment, it
+must remain private on its dedicated host-loopback listener (port 5001); the
+normal UI and REST listener remains on port 5000. The backend must not run,
+bundle, configure, or store any external-client credentials or state. MCP logs
+and errors must not contain raw queries, transcript text, tool results, private
+paths/URLs, client identifiers, or credentials.
 
 ---
 
@@ -964,7 +964,7 @@ Recommended minimum:
 
 Do not overcomplicate observability in MVP, but keep logs useful.
 Never log raw MCP queries, transcript text, tool results, configured private
-URLs, tunnel identifiers, API keys, credentials, or unredacted evidence.
+URLs, client identifiers, API keys, credentials, or unredacted evidence.
 
 ---
 
@@ -986,7 +986,7 @@ URLs, tunnel identifiers, API keys, credentials, or unredacted evidence.
 - log detailed errors internally
 
 MCP errors additionally use only the shared stable codes and omit transcript,
-query, private-path, configuration, tunnel, credential, and raw-exception data.
+query, private-path, configuration, credential, and raw-exception data.
 
 ---
 
@@ -996,8 +996,8 @@ MVP assumptions:
 - no auth
 - homelab/local/private network usage
 - no internet-facing hardening required beyond basic safe coding
-- the optional MCP source is private and outbound-tunnel-only; it must not add
-  public exposure, port forwarding, or a public listener
+- the optional MCP source is private and host-loopback-only on its dedicated
+  listener; it must not add LAN/public exposure or port-5000 MCP routing
 
 Even without auth, still do basic safety:
 - validate file names/paths

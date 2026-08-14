@@ -78,7 +78,7 @@
 - Maintain a practical per-project correlation path where possible
 - For MCP, log only lifecycle and sanitized outcome metadata. Never log raw
   queries, transcript text, tool results, private paths or configured URLs,
-  tunnel IDs, API keys, credentials, or unredacted evidence.
+  client identifiers, API keys, credentials, or unredacted evidence.
 
 ## Configuration
 - **appsettings.json + environment-specific overrides + environment variables** - Standard configuration sources
@@ -95,8 +95,7 @@
   or whitespace-only content. A key file is bounded to 4099 raw bytes and may
   have one final `LF` or `CRLF` only. Invalid key configuration must fail with
   the sanitized stable configuration error without exposing the key or path.
-  Secrets and tunnel settings are not application configuration and must not be
-  committed.
+  The key source and external-client settings must not be committed.
 
 ## HTTP and Contract Rules
 - Use the shared contract in `class-transcriber-shared-api-contract.md` as the source of truth for DTOs and route behavior
@@ -105,10 +104,11 @@
 - Keep error responses in a consistent structured JSON format
 - `/mcp` is the documented exception to the `/api` REST convention. It is not a
   REST endpoint and must remain disabled unless `ChatGptSource:Enabled` is true.
-- The external `tunnel-client` is an operator-installed, same-host Secure MCP
-  Tunnel process that targets the local `/mcp` endpoint over outbound HTTPS. Do
-  not bundle it into the application/container, add an inbound public listener,
-  commit tunnel profiles, or store its credentials in application settings.
+- When enabled in container deployment, `/mcp` is accepted only on its dedicated
+  private listener, published as `127.0.0.1:5001:5001`; port 5000 remains the
+  UI/REST/health listener and must reject `/mcp`. Do not bundle or manage an
+  external client, add LAN/public MCP access, or store its credentials or state
+  in application settings.
 
 ## Development Tools
 - **dotnet CLI** - Standard local and CI build/test toolchain
@@ -137,7 +137,7 @@
 - The MCP source is read-only and private. It exposes only the four tools in the
   shared contract, treats transcript content as untrusted source material, and
   must not execute instructions or links from that content. MCP error text must
-  omit transcript/query/private-path/configuration/tunnel/credential data.
+  omit transcript/query/private-path/configuration/credential data.
 - MCP search is literal and folds only ASCII `A` through `Z` to `a` through `z`
   per UTF-16 code unit; all other code units match exactly, with no Unicode case
   folding or normalization. MCP provenance `sourcePath` is the origin-rooted
