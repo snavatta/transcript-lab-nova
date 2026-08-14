@@ -39,7 +39,8 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
         bool includeFrontendAppShell = false,
         long? maxRequestBodySizeBytes = null,
         IReadOnlyDictionary<string, string?>? configuration = null,
-        IPAddress? remoteIpAddressOverride = null)
+        IPAddress? remoteIpAddressOverride = null,
+        int? localPortOverride = null)
     {
         _transcriptionEngines = transcriptionEngines?.ToArray()
             ?? [
@@ -153,9 +154,6 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
             db.Database.EnsureCreated();
         }
 
-        if (_webRootPath is not null)
-            _app.UseFrontendAppShellAssets();
-
         if (remoteIpAddressOverride is not null)
         {
             _app.Use(async (context, next) =>
@@ -164,6 +162,19 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
                 await next(context);
             });
         }
+
+        if (localPortOverride is not null)
+        {
+            _app.Use(async (context, next) =>
+            {
+                context.Connection.LocalPort = localPortOverride.Value;
+                await next(context);
+            });
+        }
+
+        _app.UseChatGptSourcePortGuard();
+        if (_webRootPath is not null)
+            _app.UseFrontendAppShellAssets();
 
         _app.MapChatGptSource();
 
@@ -221,6 +232,7 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
               </body>
             </html>
             """);
+        File.WriteAllText(Path.Combine(webRootPath, "test-asset.txt"), "static asset");
         return webRootPath;
     }
 

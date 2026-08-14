@@ -11,6 +11,7 @@ namespace ClassTranscriber.Api.Tests;
 public sealed class ChatGptSourceStartupTests : IDisposable
 {
     private const string ConfigurationError = "ChatGptSource cursor integrity configuration is invalid.";
+    private const string PrivatePortConfigurationError = "ChatGptSource private port configuration is invalid.";
     private readonly string _temporaryDirectory = Path.Combine(Path.GetTempPath(), $"transcriptlab-mcp-startup-{Guid.NewGuid():N}");
 
     public ChatGptSourceStartupTests() => Directory.CreateDirectory(_temporaryDirectory);
@@ -39,6 +40,49 @@ public sealed class ChatGptSourceStartupTests : IDisposable
         });
 
         options.CursorIntegrityKey.Should().Be(key);
+        options.PrivatePort.Should().Be(5001);
+    }
+
+    [Theory]
+    [InlineData("1")]
+    [InlineData("65535")]
+    public void Enabled_mode_accepts_private_ports_at_bounds(string privatePort)
+    {
+        var values = EnabledDirectConfiguration(CreateKey(32));
+        values["ChatGptSource:PrivatePort"] = privatePort;
+
+        ResolveOptions(values).PrivatePort.Should().Be(int.Parse(privatePort));
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("5000")]
+    [InlineData("65536")]
+    public void Enabled_mode_rejects_invalid_private_ports_with_stable_error(string privatePort)
+    {
+        var values = EnabledDirectConfiguration(CreateKey(32));
+        values["ChatGptSource:PrivatePort"] = privatePort;
+
+        var action = () => ResolveOptions(values);
+
+        var exception = action.Should().Throw<OptionsValidationException>().Which;
+        exception.Failures.Should().ContainSingle().Which.Should().Be(PrivatePortConfigurationError);
+        exception.Message.Should().NotContain(privatePort);
+    }
+
+    [Theory]
+    [InlineData("0")]
+    [InlineData("5000")]
+    [InlineData("65536")]
+    public void Disabled_mode_ignores_invalid_private_ports(string privatePort)
+    {
+        var options = ResolveOptions(new Dictionary<string, string?>
+        {
+            ["ChatGptSource:Enabled"] = "false",
+            ["ChatGptSource:PrivatePort"] = privatePort,
+        });
+
+        options.Enabled.Should().BeFalse();
     }
 
     [Theory]

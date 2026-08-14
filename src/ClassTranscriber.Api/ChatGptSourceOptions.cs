@@ -7,11 +7,17 @@ namespace ClassTranscriber.Api;
 
 public sealed class ChatGptSourceOptions
 {
+    public const int DefaultPrivatePort = 5001;
+    public const int PublicApplicationPort = 5000;
     public const string SectionName = "ChatGptSource";
     public const string CursorIntegrityConfigurationError =
         "ChatGptSource cursor integrity configuration is invalid.";
+    public const string PrivatePortConfigurationError =
+        "ChatGptSource private port configuration is invalid.";
 
     public bool Enabled { get; set; }
+
+    public int PrivatePort { get; set; } = DefaultPrivatePort;
 
     public string? ApplicationBaseUrl { get; set; }
 
@@ -54,6 +60,9 @@ internal sealed class ChatGptSourceOptionsValidator : IValidateOptions<ChatGptSo
     {
         if (!options.Enabled)
             return ValidateOptionsResult.Skip;
+
+        if (options.PrivatePort is < 1 or > 65535 or ChatGptSourceOptions.PublicApplicationPort)
+            return ValidateOptionsResult.Fail(ChatGptSourceOptions.PrivatePortConfigurationError);
 
         if (!TryResolveCursorIntegrityKey(options, out var cursorIntegrityKey))
             return InvalidCursorIntegrityConfiguration();

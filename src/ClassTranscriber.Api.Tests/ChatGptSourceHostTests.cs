@@ -55,7 +55,8 @@ public sealed class ChatGptSourceHostTests
             {
                 ["ChatGptSource:Enabled"] = "true",
                 ["ChatGptSource:ApplicationBaseUrl"] = "https://example.com/transcriptlab/",
-            });
+            },
+            localPortOverride: 5001);
         factory.Client.DefaultRequestHeaders.Accept.ParseAdd("application/json, text/event-stream");
         factory.Services.GetRequiredService<IOptions<ChatGptSourceOptions>>().Value.ApplicationBaseUrl
             .Should().Be("https://example.com/transcriptlab/");
@@ -81,6 +82,11 @@ public sealed class ChatGptSourceHostTests
             .GetString().Should().Be("TranscriptLab Nova ChatGPT Transcript Source");
         factory.Client.DefaultRequestHeaders.Remove("MCP-Protocol-Version");
         factory.Client.DefaultRequestHeaders.Add("MCP-Protocol-Version", "2025-06-18");
+
+        using var initializedResponse = await factory.Client.PostAsJsonAsync(
+            "/mcp",
+            new { jsonrpc = "2.0", method = "notifications/initialized" });
+        initializedResponse.StatusCode.Should().Be(HttpStatusCode.Accepted);
 
         using var toolsResponse = await factory.Client.PostAsJsonAsync(
             "/mcp",
@@ -140,7 +146,8 @@ public sealed class ChatGptSourceHostTests
             {
                 ["ChatGptSource:Enabled"] = "true",
             },
-            remoteIpAddressOverride: IPAddress.Parse(remoteAddress));
+            remoteIpAddressOverride: IPAddress.Parse(remoteAddress),
+            localPortOverride: 5001);
         factory.Client.DefaultRequestHeaders.Accept.ParseAdd("application/json, text/event-stream");
 
         using var response = await SendInitializeAsync(factory.Client);
@@ -149,21 +156,61 @@ public sealed class ChatGptSourceHostTests
     }
 
     [Fact]
-    public async Task Enabled_mcp_rejects_non_loopback_client_with_non_html_403()
+    public async Task Enabled_private_listener_accepts_host_forwarded_non_loopback_remote_address()
     {
         await using var factory = new TestWebApplicationFactory(
             configuration: new Dictionary<string, string?>
             {
                 ["ChatGptSource:Enabled"] = "true",
             },
-            remoteIpAddressOverride: IPAddress.Parse("192.0.2.1"));
+            remoteIpAddressOverride: IPAddress.Parse("192.0.2.1"),
+            localPortOverride: 5001);
         factory.Client.DefaultRequestHeaders.Accept.ParseAdd("application/json, text/event-stream");
 
         using var response = await SendInitializeAsync(factory.Client);
 
-        response.StatusCode.Should().Be(HttpStatusCode.Forbidden);
-        response.Content.Headers.ContentType?.MediaType.Should().Be("application/json");
-        (await response.Content.ReadAsStringAsync()).Should().Be("{\"error\":\"forbidden\"}");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+    }
+
+    [Fact]
+    public async Task Enabled_public_listener_rejects_mcp_with_non_html_404()
+    {
+        await using var factory = new TestWebApplicationFactory(
+            configuration: new Dictionary<string, string?>
+            {
+                ["ChatGptSource:Enabled"] = "true",
+            },
+            localPortOverride: 5000);
+        factory.Client.DefaultRequestHeaders.Accept.ParseAdd("application/json, text/event-stream");
+
+        using var response = await SendInitializeAsync(factory.Client);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.Content.Headers.ContentType?.MediaType.Should().NotBe("text/html");
+    }
+
+    [Theory]
+    [InlineData("/api/health")]
+    [InlineData("/api/projects")]
+    [InlineData("/")]
+    [InlineData("/test-asset.txt")]
+    [InlineData("/swagger")]
+    [InlineData("/unknown")]
+    [InlineData("/mcp/")]
+    public async Task Enabled_private_listener_rejects_non_mcp_routes_with_non_html_404(string path)
+    {
+        await using var factory = new TestWebApplicationFactory(
+            includeFrontendAppShell: true,
+            configuration: new Dictionary<string, string?>
+            {
+                ["ChatGptSource:Enabled"] = "true",
+            },
+            localPortOverride: 5001);
+
+        using var response = await factory.Client.GetAsync(path);
+
+        response.StatusCode.Should().Be(HttpStatusCode.NotFound);
+        response.Content.Headers.ContentType?.MediaType.Should().NotBe("text/html");
     }
 
     private static async Task<(Guid FolderId, Guid ProjectId)> SeedTranscriptAsync(IServiceProvider services)

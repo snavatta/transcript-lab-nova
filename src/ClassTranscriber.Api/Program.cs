@@ -272,6 +272,7 @@ try
     });
 
     var app = builder.Build();
+    app.UseChatGptSourcePortGuard();
 
     using (var scope = app.Services.CreateScope())
     {
@@ -327,9 +328,10 @@ try
 }
 catch (OptionsValidationException exception) when (
     exception.Failures.All(failure =>
-        string.Equals(failure, ChatGptSourceOptions.CursorIntegrityConfigurationError, StringComparison.Ordinal)))
+        string.Equals(failure, ChatGptSourceOptions.CursorIntegrityConfigurationError, StringComparison.Ordinal)
+        || string.Equals(failure, ChatGptSourceOptions.PrivatePortConfigurationError, StringComparison.Ordinal)))
 {
-    Console.Error.WriteLine(ChatGptSourceOptions.CursorIntegrityConfigurationError);
+    Console.Error.WriteLine(exception.Failures.Single());
     Environment.ExitCode = 1;
 }
 catch (Exception ex)

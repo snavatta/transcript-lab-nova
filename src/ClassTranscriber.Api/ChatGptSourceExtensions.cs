@@ -1,12 +1,9 @@
-using System.Net;
 using ClassTranscriber.Api.Mcp;
 using Microsoft.AspNetCore.Builder;
-using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Routing;
 using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.Extensions.Hosting;
 using Microsoft.Extensions.Options;
 using ModelContextProtocol.AspNetCore;
 using ModelContextProtocol.Protocol;
@@ -55,29 +52,26 @@ public static class ChatGptSourceExtensions
     {
         var options = endpoints.ServiceProvider.GetRequiredService<IOptions<ChatGptSourceOptions>>().Value;
         if (options.Enabled)
-        {
-            var allowMissingRemoteAddress = endpoints.ServiceProvider
-                .GetRequiredService<IWebHostEnvironment>()
-                .IsEnvironment("Testing");
-            endpoints.MapMcp("/mcp").Add(endpointBuilder =>
-            {
-                var next = endpointBuilder.RequestDelegate
-                    ?? throw new InvalidOperationException("The MCP endpoint has no request delegate.");
-                endpointBuilder.RequestDelegate = async context =>
-                {
-                    var remoteAddress = context.Connection.RemoteIpAddress;
-                    if ((remoteAddress is null && allowMissingRemoteAddress)
-                        || (remoteAddress is not null && IPAddress.IsLoopback(remoteAddress)))
-                    {
-                        await next(context);
-                        return;
-                    }
+            endpoints.MapMcp("/mcp");
+    }
 
-                    context.Response.StatusCode = StatusCodes.Status403Forbidden;
-                    context.Response.ContentType = "application/json";
-                    await context.Response.WriteAsync("{\"error\":\"forbidden\"}");
-                };
-            });
-        }
+    public static IApplicationBuilder UseChatGptSourcePortGuard(this IApplicationBuilder app)
+    {
+        var options = app.ApplicationServices.GetRequiredService<IOptions<ChatGptSourceOptions>>().Value;
+        if (!options.Enabled)
+            return app;
+
+        return app.Use(async (context, next) =>
+        {
+            var isMcpPath = string.Equals(context.Request.Path.Value, "/mcp", StringComparison.Ordinal);
+            var isPrivatePort = context.Connection.LocalPort == options.PrivatePort;
+            if (isMcpPath == isPrivatePort)
+            {
+                await next(context);
+                return;
+            }
+
+            context.Response.StatusCode = StatusCodes.Status404NotFound;
+        });
     }
 }
