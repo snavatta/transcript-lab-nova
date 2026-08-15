@@ -23,7 +23,7 @@ public sealed class SearchTranscriptsTool
         OutputSchemaType = typeof(SearchTranscriptsOutput))]
     [Description(Description)]
     public static async Task<CallToolResult> SearchAsync(
-        IChatGptSourceContentToolService contentService,
+        IMcpContentToolService contentService,
         ILogger<SearchTranscriptsTool> logger,
         [Description("Literal substring to find, trimmed; 2 to 200 characters.")]
         [MinLength(2), MaxLength(200)] string query,
@@ -41,14 +41,14 @@ public sealed class SearchTranscriptsTool
             var result = await contentService.SearchAsync(query, folderId, offset, limit, cancellationToken);
             if (!result.IsSuccess)
             {
-                outcomeCode = ChatGptSourceToolOutcome.ResolveServiceCode(result.Error);
+                outcomeCode = McpToolOutcome.ResolveServiceCode(result.Error);
                 return outcomeCode == result.Error?.Code
                     ? ContentToolResult.Error(result.Error)
                     : ContentToolResult.InternalError();
             }
 
             var output = SearchTranscriptsOutput.From(result.Value!);
-            outcomeCode = ChatGptSourceToolOutcome.Success;
+            outcomeCode = McpToolOutcome.Success;
             return ContentToolResult.Success(
                 $"Found {output.Matches.Count} transcript project match(es) at offset {output.Offset}." +
                 (output.HasMore ? " Use nextOffset to continue." : " No more matches."),
@@ -56,7 +56,7 @@ public sealed class SearchTranscriptsTool
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            outcomeCode = ChatGptSourceToolOutcome.Cancelled;
+            outcomeCode = McpToolOutcome.Cancelled;
             throw;
         }
         catch (OperationCanceledException)
@@ -71,7 +71,7 @@ public sealed class SearchTranscriptsTool
         }
         finally
         {
-            ChatGptSourceToolOutcome.Log(logger, "search_transcripts", outcomeCode);
+            McpToolOutcome.Log(logger, "search_transcripts", outcomeCode);
         }
     }
 }

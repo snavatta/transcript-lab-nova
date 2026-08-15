@@ -5,11 +5,11 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ClassTranscriber.Api.Mcp;
 
-public interface IChatGptSourceCatalogService
+public interface IMcpCatalogService
 {
-    Task<ChatGptSourceFolderPage> ListFoldersAsync(int offset = 0, int limit = 50, CancellationToken cancellationToken = default);
+    Task<McpFolderPage> ListFoldersAsync(int offset = 0, int limit = 50, CancellationToken cancellationToken = default);
 
-    Task<ChatGptSourceProjectPage> ListProjectsAsync(
+    Task<McpProjectPage> ListProjectsAsync(
         Guid? folderId = null,
         string? nameQuery = null,
         int offset = 0,
@@ -17,18 +17,18 @@ public interface IChatGptSourceCatalogService
         CancellationToken cancellationToken = default);
 }
 
-public sealed class ChatGptSourceCatalogService : IChatGptSourceCatalogService
+public sealed class McpCatalogService : IMcpCatalogService
 {
     private readonly AppDbContext _db;
     private readonly Uri? _applicationBaseUri;
 
-    public ChatGptSourceCatalogService(AppDbContext db, ChatGptSourceOptions options)
+    public McpCatalogService(AppDbContext db, McpOptions options)
     {
         _db = db;
-        ChatGptSourceOptions.TryNormalizeApplicationBaseUrl(options.ApplicationBaseUrl, out _applicationBaseUri);
+        McpOptions.TryNormalizeApplicationBaseUrl(options.ApplicationBaseUrl, out _applicationBaseUri);
     }
 
-    public async Task<ChatGptSourceFolderPage> ListFoldersAsync(
+    public async Task<McpFolderPage> ListFoldersAsync(
         int offset = 0,
         int limit = 50,
         CancellationToken cancellationToken = default)
@@ -38,7 +38,7 @@ public sealed class ChatGptSourceCatalogService : IChatGptSourceCatalogService
             .AsNoTracking()
             .OrderBy(folder => EF.Functions.Collate(folder.Name, "NOCASE"))
             .ThenBy(folder => folder.Id)
-            .Select(folder => new ChatGptSourceFolderCatalog
+            .Select(folder => new McpFolderCatalog
             {
                 FolderId = folder.Id,
                 FolderName = folder.Name,
@@ -52,7 +52,7 @@ public sealed class ChatGptSourceCatalogService : IChatGptSourceCatalogService
         return CreateFolderPage(folders, page.Offset, page.Limit);
     }
 
-    public async Task<ChatGptSourceProjectPage> ListProjectsAsync(
+    public async Task<McpProjectPage> ListProjectsAsync(
         Guid? folderId = null,
         string? nameQuery = null,
         int offset = 0,
@@ -82,7 +82,7 @@ public sealed class ChatGptSourceCatalogService : IChatGptSourceCatalogService
         var projects = await query
             .OrderByDescending(project => project.CompletedAtUtc)
             .ThenBy(project => project.Id)
-            .Select(project => new ChatGptSourceProjectCatalog
+            .Select(project => new McpProjectCatalog
             {
                 FolderId = project.FolderId,
                 FolderName = project.Folder.Name,
@@ -115,13 +115,13 @@ public sealed class ChatGptSourceCatalogService : IChatGptSourceCatalogService
         return CreateProjectPage(projects, page.Offset, page.Limit);
     }
 
-    private static ChatGptSourceFolderPage CreateFolderPage(
-        List<ChatGptSourceFolderCatalog> folders, int offset, int limit)
+    private static McpFolderPage CreateFolderPage(
+        List<McpFolderCatalog> folders, int offset, int limit)
     {
         var hasMore = folders.Count > limit;
         if (hasMore)
             folders.RemoveAt(limit);
-        return new ChatGptSourceFolderPage
+        return new McpFolderPage
         {
             Folders = folders,
             Offset = offset,
@@ -131,13 +131,13 @@ public sealed class ChatGptSourceCatalogService : IChatGptSourceCatalogService
         };
     }
 
-    private static ChatGptSourceProjectPage CreateProjectPage(
-        List<ChatGptSourceProjectCatalog> projects, int offset, int limit)
+    private static McpProjectPage CreateProjectPage(
+        List<McpProjectCatalog> projects, int offset, int limit)
     {
         var hasMore = projects.Count > limit;
         if (hasMore)
             projects.RemoveAt(limit);
-        return new ChatGptSourceProjectPage
+        return new McpProjectPage
         {
             Projects = projects,
             Offset = offset,

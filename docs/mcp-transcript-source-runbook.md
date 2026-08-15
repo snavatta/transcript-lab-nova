@@ -17,18 +17,18 @@ key_directory="$(mktemp -d)"
 key_file="${key_directory}/cursor-integrity-key"
 openssl rand -hex 32 >"${key_file}"
 chmod 0600 "${key_file}"
-export CHATGPT_SOURCE_CURSOR_KEY_FILE="${key_file}"
+export MCP_CURSOR_KEY_FILE="${key_file}"
 ```
 
 Keep this file outside the repository. Do not put its contents or path in
-tracked configuration, screenshots, or logs. `ChatGptSource__CursorIntegrityKeyFile`
+tracked configuration, screenshots, or logs. `Mcp__CursorIntegrityKeyFile`
 is configured by the MCP Compose overlay and receives this file as a read-only
 container secret. A direct key and a key file must never be configured together.
 
 ## 2. Start the private server
 
 The repository’s [`.env.example`](../.env.example) contains only a fake key-file
-path. Your exported `CHATGPT_SOURCE_CURSOR_KEY_FILE` overrides it for these
+path. Your exported `MCP_CURSOR_KEY_FILE` overrides it for these
 commands.
 
 For the normal Compose deployment:
@@ -110,5 +110,5 @@ Remove the temporary key and directory when they are no longer needed:
 ```bash
 rm -f -- "${key_file}"
 rmdir -- "${key_directory}"
-unset CHATGPT_SOURCE_CURSOR_KEY_FILE
+unset MCP_CURSOR_KEY_FILE
 ```

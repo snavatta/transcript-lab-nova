@@ -1,6 +1,6 @@
 namespace ClassTranscriber.Api.Mcp;
 
-public interface IChatGptSourceContentToolService
+public interface IMcpContentToolService
 {
     Task<ContentQueryResult<TranscriptSearchPage>> SearchAsync(
         string query,
@@ -17,8 +17,8 @@ public interface IChatGptSourceContentToolService
         CancellationToken cancellationToken = default);
 }
 
-public sealed class ChatGptSourceContentToolService(ChatGptSourceContentService contentService)
-    : IChatGptSourceContentToolService
+public sealed class McpContentToolService(McpContentService contentService)
+    : IMcpContentToolService
 {
     public Task<ContentQueryResult<TranscriptSearchPage>> SearchAsync(
         string query,

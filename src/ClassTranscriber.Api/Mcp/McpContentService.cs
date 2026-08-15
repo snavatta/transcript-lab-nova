@@ -5,7 +5,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ClassTranscriber.Api.Mcp;
 
-public sealed class ChatGptSourceContentService
+public sealed class McpContentService
 {
     public const string SearchSemantics =
         "Literal SQLite substring search. Case-insensitivity is ASCII-oriented; full Unicode case folding and semantic search are not provided.";
@@ -17,7 +17,7 @@ public sealed class ChatGptSourceContentService
     private readonly Uri? applicationBaseUrl;
     private readonly TranscriptCursorCodec cursorCodec;
 
-    public ChatGptSourceContentService(
+    public McpContentService(
         AppDbContext db,
         Uri? applicationBaseUrl = null,
         string? cursorIntegrityKey = null)

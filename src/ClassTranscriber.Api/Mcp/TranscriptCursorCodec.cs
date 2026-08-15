@@ -7,7 +7,7 @@ namespace ClassTranscriber.Api.Mcp;
 internal sealed class TranscriptCursorCodec(string? integrityKey)
 {
     private static readonly byte[] CursorDomain =
-        Encoding.UTF8.GetBytes("TranscriptLab.ChatGptSource.Cursor.v1\0");
+        Encoding.UTF8.GetBytes("TranscriptLab.Mcp.Cursor.v1\0");
     private readonly byte[] integrityKeyBytes = Encoding.UTF8.GetBytes(integrityKey ?? string.Empty);
 
     public string Encode(TranscriptCursorPayload payload)

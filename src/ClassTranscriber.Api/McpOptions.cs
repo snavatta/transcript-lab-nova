@@ -5,15 +5,15 @@ using Microsoft.Extensions.Options;
 
 namespace ClassTranscriber.Api;
 
-public sealed class ChatGptSourceOptions
+public sealed class McpOptions
 {
     public const int DefaultPrivatePort = 5001;
     public const int PublicApplicationPort = 5000;
-    public const string SectionName = "ChatGptSource";
+    public const string SectionName = "Mcp";
     public const string CursorIntegrityConfigurationError =
-        "ChatGptSource cursor integrity configuration is invalid.";
+        "Mcp cursor integrity configuration is invalid.";
     public const string PrivatePortConfigurationError =
-        "ChatGptSource private port configuration is invalid.";
+        "Mcp private port configuration is invalid.";
 
     public bool Enabled { get; set; }
 
@@ -49,27 +49,27 @@ public sealed class ChatGptSourceOptions
     }
 }
 
-internal sealed class ChatGptSourceOptionsValidator : IValidateOptions<ChatGptSourceOptions>
+internal sealed class McpOptionsValidator : IValidateOptions<McpOptions>
 {
     private const int MinimumCursorIntegrityKeyBytes = 32;
     private const int MaximumCursorIntegrityKeyBytes = 4096;
     private const int MaximumCursorIntegrityKeyFileBytes = 4099;
     private static readonly UTF8Encoding StrictUtf8 = new(encoderShouldEmitUTF8Identifier: false, throwOnInvalidBytes: true);
 
-    public ValidateOptionsResult Validate(string? name, ChatGptSourceOptions options)
+    public ValidateOptionsResult Validate(string? name, McpOptions options)
     {
         if (!options.Enabled)
             return ValidateOptionsResult.Skip;
 
-        if (options.PrivatePort is < 1 or > 65535 or ChatGptSourceOptions.PublicApplicationPort)
-            return ValidateOptionsResult.Fail(ChatGptSourceOptions.PrivatePortConfigurationError);
+        if (options.PrivatePort is < 1 or > 65535 or McpOptions.PublicApplicationPort)
+            return ValidateOptionsResult.Fail(McpOptions.PrivatePortConfigurationError);
 
         if (!TryResolveCursorIntegrityKey(options, out var cursorIntegrityKey))
             return InvalidCursorIntegrityConfiguration();
 
         options.CursorIntegrityKey = cursorIntegrityKey;
 
-        if (!ChatGptSourceOptions.TryNormalizeApplicationBaseUrl(options.ApplicationBaseUrl, out var uri))
+        if (!McpOptions.TryNormalizeApplicationBaseUrl(options.ApplicationBaseUrl, out var uri))
             return InvalidCursorIntegrityConfiguration();
 
         options.ApplicationBaseUrl = uri?.AbsoluteUri;
@@ -77,10 +77,10 @@ internal sealed class ChatGptSourceOptionsValidator : IValidateOptions<ChatGptSo
     }
 
     private static ValidateOptionsResult InvalidCursorIntegrityConfiguration() =>
-        ValidateOptionsResult.Fail(ChatGptSourceOptions.CursorIntegrityConfigurationError);
+        ValidateOptionsResult.Fail(McpOptions.CursorIntegrityConfigurationError);
 
     private static bool TryResolveCursorIntegrityKey(
-        ChatGptSourceOptions options,
+        McpOptions options,
         out string? cursorIntegrityKey)
     {
         cursorIntegrityKey = null;
@@ -188,14 +188,14 @@ internal sealed class ChatGptSourceOptionsValidator : IValidateOptions<ChatGptSo
         bytes.StartsWith(Encoding.UTF8.Preamble);
 }
 
-internal static class ChatGptSourceStartupConfiguration
+internal static class McpStartupConfiguration
 {
     public static void Validate(IConfiguration configuration)
     {
-        var options = configuration.GetSection(ChatGptSourceOptions.SectionName).Get<ChatGptSourceOptions>()
-            ?? new ChatGptSourceOptions();
-        var result = new ChatGptSourceOptionsValidator().Validate(Options.DefaultName, options);
+        var options = configuration.GetSection(McpOptions.SectionName).Get<McpOptions>()
+            ?? new McpOptions();
+        var result = new McpOptionsValidator().Validate(Options.DefaultName, options);
         if (result.Failed)
-            throw new OptionsValidationException(ChatGptSourceOptions.SectionName, typeof(ChatGptSourceOptions), result.Failures);
+            throw new OptionsValidationException(McpOptions.SectionName, typeof(McpOptions), result.Failures);
     }
 }

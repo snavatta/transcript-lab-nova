@@ -22,7 +22,7 @@ public sealed class GetTranscriptTool
         OutputSchemaType = typeof(GetTranscriptOutput))]
     [Description(Description)]
     public static async Task<CallToolResult> GetAsync(
-        IChatGptSourceContentToolService contentService,
+        IMcpContentToolService contentService,
         ILogger<GetTranscriptTool> logger,
         [Description("Project GUID returned by a catalog or transcript-search result.")] Guid projectId,
         [Description("Opaque continuation cursor returned by the preceding get_transcript call.")] string? cursor = null,
@@ -44,14 +44,14 @@ public sealed class GetTranscriptTool
                 cancellationToken);
             if (!result.IsSuccess)
             {
-                outcomeCode = ChatGptSourceToolOutcome.ResolveServiceCode(result.Error);
+                outcomeCode = McpToolOutcome.ResolveServiceCode(result.Error);
                 return outcomeCode == result.Error?.Code
                     ? ContentToolResult.Error(result.Error)
                     : ContentToolResult.InternalError();
             }
 
             var output = GetTranscriptOutput.From(result.Value!);
-            outcomeCode = ChatGptSourceToolOutcome.Success;
+            outcomeCode = McpToolOutcome.Success;
             return ContentToolResult.Success(
                 $"Returned {output.Chunks.Count} transcript chunk(s) for project {output.ProjectId}." +
                 (output.HasMore ? " Use nextCursor to continue." : " Transcript retrieval is complete."),
@@ -59,7 +59,7 @@ public sealed class GetTranscriptTool
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            outcomeCode = ChatGptSourceToolOutcome.Cancelled;
+            outcomeCode = McpToolOutcome.Cancelled;
             throw;
         }
         catch (OperationCanceledException)
@@ -74,7 +74,7 @@ public sealed class GetTranscriptTool
         }
         finally
         {
-            ChatGptSourceToolOutcome.Log(logger, "get_transcript", outcomeCode);
+            McpToolOutcome.Log(logger, "get_transcript", outcomeCode);
         }
     }
 }

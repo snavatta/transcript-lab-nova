@@ -16,7 +16,7 @@ using Microsoft.Extensions.Logging;
 
 namespace ClassTranscriber.Api.Tests;
 
-public sealed class ChatGptSourceBrowseToolTests
+public sealed class McpBrowseToolTests
 {
     [Fact]
     public async Task BrowseTools_AreDiscoverableWithExactSchemasAndReadOnlyAnnotations()
@@ -131,15 +131,15 @@ public sealed class ChatGptSourceBrowseToolTests
         var entries = new ConcurrentQueue<CapturedLogEntry>();
         using var loggerFactory = LoggerFactory.Create(builder => builder.AddProvider(new CapturingLoggerProvider(entries)));
         var success = new StubCatalogService(
-            folders: _ => Task.FromResult(new ChatGptSourceFolderPage
+            folders: _ => Task.FromResult(new McpFolderPage
             {
                 Folders = [], Offset = 0, Limit = 50, HasMore = false, NextOffset = null,
             }),
-            projects: _ => Task.FromResult(new ChatGptSourceProjectPage
+            projects: _ => Task.FromResult(new McpProjectPage
             {
                 Projects = [], Offset = 0, Limit = 20, HasMore = false, NextOffset = null,
             }));
-        var successTools = new ChatGptSourceBrowseTools(success, loggerFactory.CreateLogger<ChatGptSourceBrowseTools>());
+        var successTools = new McpBrowseTools(success, loggerFactory.CreateLogger<McpBrowseTools>());
 
         (await successTools.ListFoldersAsync()).IsError.Should().BeFalse();
         (await successTools.ListProjectsAsync()).IsError.Should().BeFalse();
@@ -147,27 +147,27 @@ public sealed class ChatGptSourceBrowseToolTests
         (await successTools.ListProjectsAsync(folderId: "private-invalid-folder-id")).IsError.Should().BeTrue();
 
         var faulted = new StubCatalogService(
-            folders: _ => Task.FromException<ChatGptSourceFolderPage>(new InvalidOperationException("private exception")),
-            projects: _ => Task.FromException<ChatGptSourceProjectPage>(new OperationCanceledException("private cancellation")));
-        var faultedTools = new ChatGptSourceBrowseTools(faulted, loggerFactory.CreateLogger<ChatGptSourceBrowseTools>());
+            folders: _ => Task.FromException<McpFolderPage>(new InvalidOperationException("private exception")),
+            projects: _ => Task.FromException<McpProjectPage>(new OperationCanceledException("private cancellation")));
+        var faultedTools = new McpBrowseTools(faulted, loggerFactory.CreateLogger<McpBrowseTools>());
         (await faultedTools.ListFoldersAsync()).IsError.Should().BeTrue();
         (await faultedTools.ListProjectsAsync()).IsError.Should().BeTrue();
 
         using var cancellation = new CancellationTokenSource();
         cancellation.Cancel();
         var cancelledService = new StubCatalogService(
-            folders: _ => Task.FromException<ChatGptSourceFolderPage>(new OperationCanceledException()),
+            folders: _ => Task.FromException<McpFolderPage>(new OperationCanceledException()),
             projects: _ => throw new InvalidOperationException());
-        var cancelledTools = new ChatGptSourceBrowseTools(
+        var cancelledTools = new McpBrowseTools(
             cancelledService,
-            loggerFactory.CreateLogger<ChatGptSourceBrowseTools>());
+            loggerFactory.CreateLogger<McpBrowseTools>());
         var cancelled = () => cancelledTools.ListFoldersAsync(cancellationToken: cancellation.Token);
         await cancelled.Should().ThrowAsync<OperationCanceledException>();
 
         entries.Should().HaveCount(7);
         foreach (var entry in entries)
         {
-            entry.EventId.Should().Be(new EventId(2400, "ChatGptSourceToolCompleted"));
+            entry.EventId.Should().Be(new EventId(2400, "McpToolCompleted"));
             entry.Properties.Keys.Should().BeEquivalentTo("ToolName", "OutcomeCode");
             entry.Exception.Should().BeNull();
             entry.Message.Should().NotContain("private");
@@ -241,18 +241,18 @@ public sealed class ChatGptSourceBrowseToolTests
             builder.WebHost.UseUrls("http://127.0.0.1:0");
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ChatGptSource:Enabled"] = "true",
-                ["ChatGptSource:ApplicationBaseUrl"] = "https://example.com/transcriptlab/",
+                ["Mcp:Enabled"] = "true",
+                ["Mcp:ApplicationBaseUrl"] = "https://example.com/transcriptlab/",
             });
             builder.Services.AddDbContext<AppDbContext>(options => options.UseSqlite(connection));
-            builder.Services.AddChatGptSource(builder.Configuration);
-            builder.Services.Configure<ChatGptSourceOptions>(options =>
+            builder.Services.AddMcp(builder.Configuration);
+            builder.Services.Configure<McpOptions>(options =>
             {
                 options.CursorIntegrityKey = "test-cursor-integrity-key-0123456789abcdef";
             });
 
             var app = builder.Build();
-            app.MapChatGptSource();
+            app.MapMcp();
             await app.StartAsync();
             await using (var scope = app.Services.CreateAsyncScope())
             {
@@ -332,16 +332,16 @@ public sealed class ChatGptSourceBrowseToolTests
     }
 
     private sealed class StubCatalogService(
-        Func<CancellationToken, Task<ChatGptSourceFolderPage>> folders,
-        Func<CancellationToken, Task<ChatGptSourceProjectPage>> projects)
-        : IChatGptSourceCatalogService
+        Func<CancellationToken, Task<McpFolderPage>> folders,
+        Func<CancellationToken, Task<McpProjectPage>> projects)
+        : IMcpCatalogService
     {
-        public Task<ChatGptSourceFolderPage> ListFoldersAsync(
+        public Task<McpFolderPage> ListFoldersAsync(
             int offset = 0,
             int limit = 50,
             CancellationToken cancellationToken = default) => folders(cancellationToken);
 
-        public Task<ChatGptSourceProjectPage> ListProjectsAsync(
+        public Task<McpProjectPage> ListProjectsAsync(
             Guid? folderId = null,
             string? nameQuery = null,
             int offset = 0,

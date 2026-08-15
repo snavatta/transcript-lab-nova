@@ -2,12 +2,12 @@ using Microsoft.Extensions.Logging;
 
 namespace ClassTranscriber.Api.Mcp;
 
-internal static class ChatGptSourceToolOutcome
+internal static class McpToolOutcome
 {
     internal const string Success = "success";
     internal const string Cancelled = "cancelled";
     internal const int EventId = 2400;
-    internal const string EventName = "ChatGptSourceToolCompleted";
+    internal const string EventName = "McpToolCompleted";
 
     internal static string ResolveServiceCode(ContentQueryError? error) => error?.Code switch
     {

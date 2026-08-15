@@ -9,12 +9,12 @@ using Microsoft.Extensions.Logging.Abstractions;
 
 namespace ClassTranscriber.Api.Mcp;
 
-public sealed class ChatGptSourceBrowseTools(
-    IChatGptSourceCatalogService catalogService,
-    ILogger<ChatGptSourceBrowseTools>? logger = null)
+public sealed class McpBrowseTools(
+    IMcpCatalogService catalogService,
+    ILogger<McpBrowseTools>? logger = null)
 {
     private static readonly JsonSerializerOptions StructuredContentSerializerOptions = CreateStructuredContentSerializerOptions();
-    private readonly ILogger<ChatGptSourceBrowseTools> logger = logger ?? NullLogger<ChatGptSourceBrowseTools>.Instance;
+    private readonly ILogger<McpBrowseTools> logger = logger ?? NullLogger<McpBrowseTools>.Instance;
 
     [McpServerTool(
         Name = "list_folders",
@@ -23,7 +23,7 @@ public sealed class ChatGptSourceBrowseTools(
         OpenWorld = false,
         Destructive = false,
         UseStructuredContent = true,
-        OutputSchemaType = typeof(ChatGptSourceFolderPage))]
+        OutputSchemaType = typeof(McpFolderPage))]
     [Description("Lists all TranscriptLab folders in deterministic pages, including empty folders.")]
     public async Task<CallToolResult> ListFoldersAsync(
         [Description("Zero-based result offset.")][Range(0, int.MaxValue)] int offset = 0,
@@ -41,7 +41,7 @@ public sealed class ChatGptSourceBrowseTools(
             }
 
             var page = await catalogService.ListFoldersAsync(offset, limit, cancellationToken);
-            outcomeCode = ChatGptSourceToolOutcome.Success;
+            outcomeCode = McpToolOutcome.Success;
             return Success(
                 page,
                 $"Returned {page.Folders.Count} {Pluralize(page.Folders.Count, "folder")} "
@@ -49,7 +49,7 @@ public sealed class ChatGptSourceBrowseTools(
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            outcomeCode = ChatGptSourceToolOutcome.Cancelled;
+            outcomeCode = McpToolOutcome.Cancelled;
             throw;
         }
         catch (OperationCanceledException)
@@ -64,7 +64,7 @@ public sealed class ChatGptSourceBrowseTools(
         }
         finally
         {
-            ChatGptSourceToolOutcome.Log(this.logger, "list_folders", outcomeCode);
+            McpToolOutcome.Log(this.logger, "list_folders", outcomeCode);
         }
     }
 
@@ -75,7 +75,7 @@ public sealed class ChatGptSourceBrowseTools(
         OpenWorld = false,
         Destructive = false,
         UseStructuredContent = true,
-        OutputSchemaType = typeof(ChatGptSourceProjectPage))]
+        OutputSchemaType = typeof(McpProjectPage))]
     [Description("Lists completed TranscriptLab projects that have ready transcripts, with optional folder and name filters.")]
     public async Task<CallToolResult> ListProjectsAsync(
         [Description("Optional folder GUID used to restrict results.")] string? folderId = null,
@@ -103,7 +103,7 @@ public sealed class ChatGptSourceBrowseTools(
                 offset,
                 limit,
                 cancellationToken);
-            outcomeCode = ChatGptSourceToolOutcome.Success;
+            outcomeCode = McpToolOutcome.Success;
             return Success(
                 page,
                 $"Returned {page.Projects.Count} {Pluralize(page.Projects.Count, "project")} "
@@ -111,7 +111,7 @@ public sealed class ChatGptSourceBrowseTools(
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            outcomeCode = ChatGptSourceToolOutcome.Cancelled;
+            outcomeCode = McpToolOutcome.Cancelled;
             throw;
         }
         catch (OperationCanceledException)
@@ -126,7 +126,7 @@ public sealed class ChatGptSourceBrowseTools(
         }
         finally
         {
-            ChatGptSourceToolOutcome.Log(this.logger, "list_projects", outcomeCode);
+            McpToolOutcome.Log(this.logger, "list_projects", outcomeCode);
         }
     }
 

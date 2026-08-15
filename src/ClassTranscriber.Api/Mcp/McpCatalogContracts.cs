@@ -1,6 +1,6 @@
 namespace ClassTranscriber.Api.Mcp;
 
-public sealed record ChatGptSourceFolderCatalog
+public sealed record McpFolderCatalog
 {
     public required Guid FolderId { get; init; }
     public required string FolderName { get; init; }
@@ -8,7 +8,7 @@ public sealed record ChatGptSourceFolderCatalog
     public required DateTime UpdatedAtUtc { get; init; }
 }
 
-public sealed record ChatGptSourceProjectCatalog
+public sealed record McpProjectCatalog
 {
     public required Guid FolderId { get; init; }
     public required string FolderName { get; init; }
@@ -24,18 +24,18 @@ public sealed record ChatGptSourceProjectCatalog
     public string? SourceUrl { get; init; }
 }
 
-public sealed record ChatGptSourceFolderPage
+public sealed record McpFolderPage
 {
-    public required IReadOnlyList<ChatGptSourceFolderCatalog> Folders { get; init; }
+    public required IReadOnlyList<McpFolderCatalog> Folders { get; init; }
     public required int Offset { get; init; }
     public required int Limit { get; init; }
     public required bool HasMore { get; init; }
     public int? NextOffset { get; init; }
 }
 
-public sealed record ChatGptSourceProjectPage
+public sealed record McpProjectPage
 {
-    public required IReadOnlyList<ChatGptSourceProjectCatalog> Projects { get; init; }
+    public required IReadOnlyList<McpProjectCatalog> Projects { get; init; }
     public required int Offset { get; init; }
     public required int Limit { get; init; }
     public required bool HasMore { get; init; }

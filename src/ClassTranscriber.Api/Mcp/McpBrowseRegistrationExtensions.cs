@@ -4,30 +4,30 @@ using Microsoft.Extensions.Options;
 
 namespace ClassTranscriber.Api.Mcp;
 
-public static class ChatGptSourceBrowseRegistrationExtensions
+public static class McpBrowseRegistrationExtensions
 {
-    public static IMcpServerBuilder WithChatGptSourceTools(this IMcpServerBuilder builder)
+    public static IMcpServerBuilder WithMcpTools(this IMcpServerBuilder builder)
     {
-        builder.Services.AddScoped<IChatGptSourceCatalogService>(services =>
-            new ChatGptSourceCatalogService(
+        builder.Services.AddScoped<IMcpCatalogService>(services =>
+            new McpCatalogService(
                 services.GetRequiredService<AppDbContext>(),
-                services.GetRequiredService<IOptions<ChatGptSourceOptions>>().Value));
-        builder.Services.AddScoped<ChatGptSourceContentService>(services =>
+                services.GetRequiredService<IOptions<McpOptions>>().Value));
+        builder.Services.AddScoped<McpContentService>(services =>
         {
-            var options = services.GetRequiredService<IOptions<ChatGptSourceOptions>>().Value;
+            var options = services.GetRequiredService<IOptions<McpOptions>>().Value;
             var configuredBaseUrl = options.ApplicationBaseUrl;
             var applicationBaseUrl = string.IsNullOrWhiteSpace(configuredBaseUrl)
                 ? null
                 : new Uri(configuredBaseUrl, UriKind.Absolute);
-            return new ChatGptSourceContentService(
+            return new McpContentService(
                 services.GetRequiredService<AppDbContext>(),
                 applicationBaseUrl,
                 options.CursorIntegrityKey);
         });
-        builder.Services.AddScoped<IChatGptSourceContentToolService, ChatGptSourceContentToolService>();
+        builder.Services.AddScoped<IMcpContentToolService, McpContentToolService>();
 
         return builder
-            .WithTools<ChatGptSourceBrowseTools>()
+            .WithTools<McpBrowseTools>()
             .WithTools<SearchTranscriptsTool>()
             .WithTools<GetTranscriptTool>();
     }

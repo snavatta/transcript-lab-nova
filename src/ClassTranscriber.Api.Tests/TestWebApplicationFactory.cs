@@ -123,8 +123,8 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
             o.ModelsPath = Path.Combine(_storageBasePath, "models", "openvino-genai");
         });
         builder.Services.Configure<OpenAiCompatibleOptions>(_ => { });
-        builder.Services.AddChatGptSource(builder.Configuration);
-        builder.Services.Configure<ChatGptSourceOptions>(options =>
+        builder.Services.AddMcp(builder.Configuration);
+        builder.Services.Configure<McpOptions>(options =>
         {
             options.CursorIntegrityKey = "test-cursor-integrity-key-0123456789abcdef";
         });
@@ -172,11 +172,11 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
             });
         }
 
-        _app.UseChatGptSourcePortGuard();
+        _app.UseMcpPortGuard();
         if (_webRootPath is not null)
             _app.UseFrontendAppShellAssets();
 
-        _app.MapChatGptSource();
+        _app.MapMcp();
 
         _app.MapGet("/api/health", () => Results.Ok(new { status = "healthy" }));
         _app.MapFolderEndpoints();

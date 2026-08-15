@@ -4,8 +4,8 @@ set -euo pipefail
 repository_root=$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)
 maximum_lines=250
 files=(
-  src/ClassTranscriber.Api/Mcp/ChatGptSourceContentModels.cs
-  src/ClassTranscriber.Api/Mcp/ChatGptSourceContentService.cs
+  src/ClassTranscriber.Api/Mcp/McpContentModels.cs
+  src/ClassTranscriber.Api/Mcp/McpContentService.cs
   src/ClassTranscriber.Api/Mcp/TranscriptContentPageBuilder.cs
   src/ClassTranscriber.Api/Mcp/TranscriptCursorCodec.cs
   src/ClassTranscriber.Api/Mcp/TranscriptOccurrenceMatcher.cs

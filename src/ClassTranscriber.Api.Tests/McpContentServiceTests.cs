@@ -11,7 +11,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ClassTranscriber.Api.Tests;
 
-public sealed class ChatGptSourceContentServiceTests
+public sealed class McpContentServiceTests
 {
     [Theory]
     [InlineData("100%", "literal-percent")]
@@ -315,7 +315,7 @@ public sealed class ChatGptSourceContentServiceTests
             plainText: new string('a', 2000),
             segments: [Segment(new string('a', 2000))],
             transcriptUpdatedAtUtc: transcriptVersion);
-        var cursorDomain = Encoding.UTF8.GetBytes("TranscriptLab.ChatGptSource.Cursor.v1\0");
+        var cursorDomain = Encoding.UTF8.GetBytes("TranscriptLab.Mcp.Cursor.v1\0");
         var publicDerivedKey = SHA256.HashData(cursorDomain);
         var payload = JsonSerializer.SerializeToUtf8Bytes(new
         {
@@ -471,7 +471,7 @@ public sealed class ChatGptSourceContentServiceTests
         text.Length == 0 || (!char.IsLowSurrogate(text[0]) && !char.IsHighSurrogate(text[^1]));
 
     private static async Task<string> ReconstructAsync(
-        ChatGptSourceContentService service,
+        McpContentService service,
         Guid projectId,
         int segmentLimit,
         int characterLimit)
@@ -498,11 +498,11 @@ public sealed class ChatGptSourceContentServiceTests
         {
             _connection = connection;
             Db = db;
-            Service = new ChatGptSourceContentService(db, new Uri("https://example.com/base/"));
+            Service = new McpContentService(db, new Uri("https://example.com/base/"));
         }
 
         public AppDbContext Db { get; private set; }
-        public ChatGptSourceContentService Service { get; private set; }
+        public McpContentService Service { get; private set; }
 
         public static async Task<ContentFixture> CreateAsync()
         {
@@ -519,7 +519,7 @@ public sealed class ChatGptSourceContentServiceTests
             await Db.DisposeAsync();
             var options = new DbContextOptionsBuilder<AppDbContext>().UseSqlite(_connection).Options;
             Db = new AppDbContext(options);
-            Service = new ChatGptSourceContentService(Db, new Uri("https://example.com/base/"));
+            Service = new McpContentService(Db, new Uri("https://example.com/base/"));
         }
 
         public async Task<Guid> SeedAsync(

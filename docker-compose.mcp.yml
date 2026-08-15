@@ -4,9 +4,9 @@ services:
       - "127.0.0.1:5001:5001"
     environment:
       ASPNETCORE_URLS: "http://+:5000;http://+:5001"
-      ChatGptSource__Enabled: "true"
-      ChatGptSource__PrivatePort: "5001"
-      ChatGptSource__CursorIntegrityKeyFile: /run/secrets/transcriptlab-mcp-cursor-integrity-key
+      Mcp__Enabled: "true"
+      Mcp__PrivatePort: "5001"
+      Mcp__CursorIntegrityKeyFile: /run/secrets/transcriptlab-mcp-cursor-integrity-key
     secrets:
       - source: transcriptlab-mcp-cursor-integrity-key
         target: /run/secrets/transcriptlab-mcp-cursor-integrity-key
@@ -14,4 +14,4 @@ services:
 
 secrets:
   transcriptlab-mcp-cursor-integrity-key:
-    file: ${CHATGPT_SOURCE_CURSOR_KEY_FILE}
+    file: ${MCP_CURSOR_KEY_FILE}

@@ -796,8 +796,9 @@ Behavior:
 ## 16. Private MCP transcript source
 
 An opt-in, in-process, read-only MCP source may expose completed,
-transcript-ready projects to ChatGPT. It is separate from the REST API and
-maps stateless Streamable HTTP at exactly `/mcp` only when enabled. It must
+transcript-ready projects to independently managed MCP clients. It is separate
+from the REST API and maps stateless Streamable HTTP at exactly `/mcp` only
+when enabled. It must
 provide only `list_folders`, `list_projects`, `search_transcripts`, and
 `get_transcript`, as defined by the shared API contract. It does not add REST
 routes, DTOs, statuses, frontend behavior, authentication, media/export access,
@@ -816,8 +817,8 @@ project/folder/timestamp provenance, including the origin-rooted application
 untrusted source material rather than instructions.
 
 When enabled, the source requires exactly one cursor-integrity key source:
-the direct `ChatGptSource:CursorIntegrityKey` or
-`ChatGptSource:CursorIntegrityKeyFile`. Keys use strict UTF-8 and must be 32
+the direct `Mcp:CursorIntegrityKey` or
+`Mcp:CursorIntegrityKeyFile`. Keys use strict UTF-8 and must be 32
 through 4096 bytes after validation; key files are bounded to 4099 raw bytes,
 have no BOM, and may have one final `LF` or `CRLF` only. Invalid or unreadable
 key configuration must fail startup using the sanitized stable configuration

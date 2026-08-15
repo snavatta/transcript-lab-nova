@@ -17,7 +17,7 @@ using Microsoft.Extensions.Logging;
 
 namespace ClassTranscriber.Api.Tests;
 
-public sealed class ChatGptSourceContentToolTests
+public sealed class McpContentToolTests
 {
     [Fact]
     public async Task Protocol_lists_exact_content_metadata_schemas_and_no_write_tool()
@@ -257,7 +257,7 @@ public sealed class ChatGptSourceContentToolTests
         outcomes.Should().HaveCount(4);
         foreach (var outcome in outcomes)
         {
-            outcome.EventId.Name.Should().Be("ChatGptSourceToolCompleted");
+            outcome.EventId.Name.Should().Be("McpToolCompleted");
             outcome.Properties.Keys.Should().BeEquivalentTo("ToolName", "OutcomeCode");
             outcome.Exception.Should().BeNull();
         }
@@ -294,7 +294,7 @@ public sealed class ChatGptSourceContentToolTests
 
         result.IsError.Should().BeTrue();
         var outcome = entries.Should().ContainSingle().Subject;
-        outcome.EventId.Should().Be(new EventId(2400, "ChatGptSourceToolCompleted"));
+        outcome.EventId.Should().Be(new EventId(2400, "McpToolCompleted"));
         outcome.Level.Should().Be(LogLevel.Warning);
         outcome.Properties.Should().BeEquivalentTo(new Dictionary<string, object?>
         {
@@ -420,20 +420,20 @@ public sealed class ChatGptSourceContentToolTests
             builder.Logging.AddProvider(new CapturingLoggerProvider(logEntries));
             builder.Configuration.AddInMemoryCollection(new Dictionary<string, string?>
             {
-                ["ChatGptSource:Enabled"] = "true",
-                ["ChatGptSource:ApplicationBaseUrl"] = applicationBaseUrl?.AbsoluteUri,
+                ["Mcp:Enabled"] = "true",
+                ["Mcp:ApplicationBaseUrl"] = applicationBaseUrl?.AbsoluteUri,
             });
             builder.Services.AddSingleton(connection);
             builder.Services.AddDbContext<AppDbContext>((services, options) =>
                 options.UseSqlite(services.GetRequiredService<SqliteConnection>()));
-            builder.Services.AddChatGptSource(builder.Configuration);
-            builder.Services.Configure<ChatGptSourceOptions>(options =>
+            builder.Services.AddMcp(builder.Configuration);
+            builder.Services.Configure<McpOptions>(options =>
             {
                 options.CursorIntegrityKey = "test-cursor-integrity-key-0123456789abcdef";
             });
 
             var app = builder.Build();
-            app.MapChatGptSource();
+            app.MapMcp();
             await app.StartAsync();
             await using (var scope = app.Services.CreateAsyncScope())
                 await scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreatedAsync();
@@ -558,7 +558,7 @@ public sealed class ChatGptSourceContentToolTests
     private sealed class StubContentToolService(
         Func<CancellationToken, Task<ContentQueryResult<TranscriptSearchPage>>> search,
         Func<CancellationToken, Task<ContentQueryResult<TranscriptContentPage>>> get)
-        : IChatGptSourceContentToolService
+        : IMcpContentToolService
     {
         public Task<ContentQueryResult<TranscriptSearchPage>> SearchAsync(
             string query,

@@ -9,7 +9,7 @@ using Microsoft.EntityFrameworkCore;
 
 namespace ClassTranscriber.Api.Tests;
 
-public sealed class ChatGptSourceCatalogServiceTests
+public sealed class McpCatalogServiceTests
 {
     [Fact]
     public async Task ListFolders_IncludesEmptyFoldersInCaseInsensitiveGuidOrderAndPages()
@@ -116,7 +116,7 @@ public sealed class ChatGptSourceCatalogServiceTests
     public async Task ListProjectsTool_RejectsMalformedFolderIdBeforeCatalogQuery(string folderId)
     {
         await using var fixture = await CatalogFixture.CreateAsync();
-        var tool = new ChatGptSourceBrowseTools(fixture.Service);
+        var tool = new McpBrowseTools(fixture.Service);
 
         var result = await tool.ListProjectsAsync(folderId: folderId);
 
@@ -135,8 +135,8 @@ public sealed class ChatGptSourceCatalogServiceTests
         var action = () => new TestWebApplicationFactory(
             configuration: new Dictionary<string, string?>
             {
-                ["ChatGptSource:Enabled"] = "true",
-                ["ChatGptSource:ApplicationBaseUrl"] = applicationBaseUrl,
+                ["Mcp:Enabled"] = "true",
+                ["Mcp:ApplicationBaseUrl"] = applicationBaseUrl,
             });
 
         action.Should().Throw<Exception>();
@@ -155,7 +155,7 @@ public sealed class ChatGptSourceCatalogServiceTests
 
         result.Projects.Single().SourceUrl.Should().BeNull();
         json.Should().NotContain("DO NOT EXPOSE THIS TRANSCRIPT");
-        typeof(ChatGptSourceProjectCatalog).GetProperties().Select(property => property.Name)
+        typeof(McpProjectCatalog).GetProperties().Select(property => property.Name)
             .Should().NotContain("PlainText");
     }
 
@@ -179,11 +179,11 @@ public sealed class ChatGptSourceCatalogServiceTests
         {
             _connection = connection;
             Db = db;
-            Service = new ChatGptSourceCatalogService(db, new ChatGptSourceOptions { ApplicationBaseUrl = applicationBaseUrl });
+            Service = new McpCatalogService(db, new McpOptions { ApplicationBaseUrl = applicationBaseUrl });
         }
 
         public AppDbContext Db { get; }
-        public ChatGptSourceCatalogService Service { get; }
+        public McpCatalogService Service { get; }
 
         public static async Task<CatalogFixture> CreateAsync(string? applicationBaseUrl = null)
         {

@@ -12,7 +12,7 @@ using ClassTranscriber.Api;
 
 namespace ClassTranscriber.Api.Tests;
 
-public sealed class ChatGptSourceHostTests
+public sealed class McpHostTests
 {
     [Theory]
     [InlineData("GET")]
@@ -23,7 +23,7 @@ public sealed class ChatGptSourceHostTests
             includeFrontendAppShell: true,
             configuration: new Dictionary<string, string?>
             {
-                ["ChatGptSource:Enabled"] = "false",
+                ["Mcp:Enabled"] = "false",
             });
 
         foreach (var path in new[] { "/mcp", "/mcp/" })
@@ -53,12 +53,12 @@ public sealed class ChatGptSourceHostTests
         await using var factory = new TestWebApplicationFactory(
             configuration: new Dictionary<string, string?>
             {
-                ["ChatGptSource:Enabled"] = "true",
-                ["ChatGptSource:ApplicationBaseUrl"] = "https://example.com/transcriptlab/",
+                ["Mcp:Enabled"] = "true",
+                ["Mcp:ApplicationBaseUrl"] = "https://example.com/transcriptlab/",
             },
             localPortOverride: 5001);
         factory.Client.DefaultRequestHeaders.Accept.ParseAdd("application/json, text/event-stream");
-        factory.Services.GetRequiredService<IOptions<ChatGptSourceOptions>>().Value.ApplicationBaseUrl
+        factory.Services.GetRequiredService<IOptions<McpOptions>>().Value.ApplicationBaseUrl
             .Should().Be("https://example.com/transcriptlab/");
 
         using var initializeResponse = await factory.Client.PostAsJsonAsync(
@@ -79,7 +79,7 @@ public sealed class ChatGptSourceHostTests
         initializeResponse.StatusCode.Should().Be(HttpStatusCode.OK);
         using var initializeJson = JsonDocument.Parse(await ReadMcpJsonAsync(initializeResponse));
         initializeJson.RootElement.GetProperty("result").GetProperty("serverInfo").GetProperty("name")
-            .GetString().Should().Be("TranscriptLab Nova ChatGPT Transcript Source");
+            .GetString().Should().Be("TranscriptLab Nova MCP Transcript Source");
         factory.Client.DefaultRequestHeaders.Remove("MCP-Protocol-Version");
         factory.Client.DefaultRequestHeaders.Add("MCP-Protocol-Version", "2025-06-18");
 
@@ -144,7 +144,7 @@ public sealed class ChatGptSourceHostTests
         await using var factory = new TestWebApplicationFactory(
             configuration: new Dictionary<string, string?>
             {
-                ["ChatGptSource:Enabled"] = "true",
+                ["Mcp:Enabled"] = "true",
             },
             remoteIpAddressOverride: IPAddress.Parse(remoteAddress),
             localPortOverride: 5001);
@@ -161,7 +161,7 @@ public sealed class ChatGptSourceHostTests
         await using var factory = new TestWebApplicationFactory(
             configuration: new Dictionary<string, string?>
             {
-                ["ChatGptSource:Enabled"] = "true",
+                ["Mcp:Enabled"] = "true",
             },
             remoteIpAddressOverride: IPAddress.Parse("192.0.2.1"),
             localPortOverride: 5001);
@@ -178,7 +178,7 @@ public sealed class ChatGptSourceHostTests
         await using var factory = new TestWebApplicationFactory(
             configuration: new Dictionary<string, string?>
             {
-                ["ChatGptSource:Enabled"] = "true",
+                ["Mcp:Enabled"] = "true",
             },
             localPortOverride: 5000);
         factory.Client.DefaultRequestHeaders.Accept.ParseAdd("application/json, text/event-stream");
@@ -203,7 +203,7 @@ public sealed class ChatGptSourceHostTests
             includeFrontendAppShell: true,
             configuration: new Dictionary<string, string?>
             {
-                ["ChatGptSource:Enabled"] = "true",
+                ["Mcp:Enabled"] = "true",
             },
             localPortOverride: 5001);
 
@@ -316,8 +316,8 @@ public sealed class ChatGptSourceHostTests
         var action = () => new TestWebApplicationFactory(
             configuration: new Dictionary<string, string?>
             {
-                ["ChatGptSource:Enabled"] = "true",
-                ["ChatGptSource:ApplicationBaseUrl"] = "not-a-url",
+                ["Mcp:Enabled"] = "true",
+                ["Mcp:ApplicationBaseUrl"] = "not-a-url",
             });
 
         action.Should().Throw<Exception>();
@@ -329,8 +329,8 @@ public sealed class ChatGptSourceHostTests
         await using var factory = new TestWebApplicationFactory(
             configuration: new Dictionary<string, string?>
             {
-                ["ChatGptSource:Enabled"] = "false",
-                ["ChatGptSource:ApplicationBaseUrl"] = "not-a-url",
+                ["Mcp:Enabled"] = "false",
+                ["Mcp:ApplicationBaseUrl"] = "not-a-url",
             });
 
         (await factory.Client.GetAsync("/api/health")).IsSuccessStatusCode.Should().BeTrue();

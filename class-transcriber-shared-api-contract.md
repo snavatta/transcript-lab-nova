@@ -30,7 +30,7 @@ All REST API routes are under:
 ```
 
 ### Private MCP exception
-The optional private ChatGPT transcript source is not a REST API and is the only
+The optional private MCP transcript source is not a REST API and is the only
 exception to the `/api` convention. When enabled, it maps stateless Streamable
 HTTP at exactly:
 
@@ -40,9 +40,9 @@ HTTP at exactly:
 
 It is an in-process, read-only MCP endpoint. It does not change, proxy, or
 extend any REST route, DTO, status, or frontend contract in this document.
-It is disabled by default with `ChatGptSource:Enabled=false` (or
-`ChatGptSource__Enabled=false`); when disabled, `/mcp` is not mapped. The
-optional `ChatGptSource:ApplicationBaseUrl` is an absolute HTTP(S) URL used
+It is disabled by default with `Mcp:Enabled=false` (or
+`Mcp__Enabled=false`); when disabled, `/mcp` is not mapped. The
+optional `Mcp:ApplicationBaseUrl` is an absolute HTTP(S) URL used
 only to populate nullable MCP `sourceUrl` values.
 
 ---
@@ -148,8 +148,8 @@ segments and transcripts without structured segments.
 ### Cursor integrity configuration
 
 When the MCP source is enabled, exactly one cursor-integrity key source is
-required: `ChatGptSource:CursorIntegrityKey` (a direct value) or
-`ChatGptSource:CursorIntegrityKeyFile` (a file path). The decoded key must be
+required: `Mcp:CursorIntegrityKey` (a direct value) or
+`Mcp:CursorIntegrityKeyFile` (a file path). The decoded key must be
 strict UTF-8, contain 32 through 4096 bytes, and contain neither a UTF-8 BOM,
 NUL, carriage return, nor line feed; whitespace-only keys are invalid. A key
 file is bounded to 4099 raw bytes, must be strict UTF-8 without a BOM, and may

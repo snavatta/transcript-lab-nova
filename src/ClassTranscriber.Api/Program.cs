@@ -23,7 +23,7 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     var builder = WebApplication.CreateBuilder(args);
-    ChatGptSourceStartupConfiguration.Validate(builder.Configuration);
+    McpStartupConfiguration.Validate(builder.Configuration);
     var uploadOptions = builder.Configuration.GetSection(UploadOptions.SectionName).Get<UploadOptions>() ?? new UploadOptions();
     if (uploadOptions.MaxRequestBodySizeBytes <= 0)
         uploadOptions.MaxRequestBodySizeBytes = UploadOptions.DefaultMaxRequestBodySizeBytes;
@@ -48,7 +48,7 @@ try
 
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen();
-    builder.Services.AddChatGptSource(builder.Configuration);
+    builder.Services.AddMcp(builder.Configuration);
 
     builder.Services.ConfigureHttpJsonOptions(options =>
     {
@@ -272,7 +272,7 @@ try
     });
 
     var app = builder.Build();
-    app.UseChatGptSourcePortGuard();
+    app.UseMcpPortGuard();
 
     using (var scope = app.Services.CreateScope())
     {
@@ -307,7 +307,7 @@ try
 
     app.UseCors();
     app.UseFrontendAppShellAssets();
-    app.MapChatGptSource();
+    app.MapMcp();
 
     app.MapGet("/api/health", () => Results.Ok(new { status = "healthy" }))
         .WithName("HealthCheck")
@@ -328,8 +328,8 @@ try
 }
 catch (OptionsValidationException exception) when (
     exception.Failures.All(failure =>
-        string.Equals(failure, ChatGptSourceOptions.CursorIntegrityConfigurationError, StringComparison.Ordinal)
-        || string.Equals(failure, ChatGptSourceOptions.PrivatePortConfigurationError, StringComparison.Ordinal)))
+        string.Equals(failure, McpOptions.CursorIntegrityConfigurationError, StringComparison.Ordinal)
+        || string.Equals(failure, McpOptions.PrivatePortConfigurationError, StringComparison.Ordinal)))
 {
     Console.Error.WriteLine(exception.Failures.Single());
     Environment.ExitCode = 1;

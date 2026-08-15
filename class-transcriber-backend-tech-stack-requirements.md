@@ -87,7 +87,8 @@
 - Optional debug-oriented worker logging such as per-segment transcription logs must be configurable and disabled by default
 - Secrets should come from environment variables or deployment configuration, not committed files
 - Local development defaults should keep runtime data outside tracked source directories
-- `ChatGptSource` typed options are approved for the optional MCP source:
+- `McpOptions` typed options, bound to the `Mcp` configuration section, are
+  approved for the optional MCP source:
   `Enabled=false` by default, nullable `ApplicationBaseUrl`, and exactly one
   enabled-mode cursor-integrity key source:
   `CursorIntegrityKey` or `CursorIntegrityKeyFile`. The resolved key is strict
@@ -103,7 +104,7 @@
 - Use UTC timestamps in all persisted and API-exposed date fields
 - Keep error responses in a consistent structured JSON format
 - `/mcp` is the documented exception to the `/api` REST convention. It is not a
-  REST endpoint and must remain disabled unless `ChatGptSource:Enabled` is true.
+  REST endpoint and must remain disabled unless `Mcp:Enabled` is true.
 - When enabled in container deployment, `/mcp` is accepted only on its dedicated
   private listener, published as `127.0.0.1:5001:5001`; port 5000 remains the
   UI/REST/health listener and must reject `/mcp`. Do not bundle or manage an

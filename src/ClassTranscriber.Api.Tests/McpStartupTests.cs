@@ -8,21 +8,21 @@ using Microsoft.Extensions.Options;
 
 namespace ClassTranscriber.Api.Tests;
 
-public sealed class ChatGptSourceStartupTests : IDisposable
+public sealed class McpStartupTests : IDisposable
 {
-    private const string ConfigurationError = "ChatGptSource cursor integrity configuration is invalid.";
-    private const string PrivatePortConfigurationError = "ChatGptSource private port configuration is invalid.";
+    private const string ConfigurationError = "Mcp cursor integrity configuration is invalid.";
+    private const string PrivatePortConfigurationError = "Mcp private port configuration is invalid.";
     private readonly string _temporaryDirectory = Path.Combine(Path.GetTempPath(), $"transcriptlab-mcp-startup-{Guid.NewGuid():N}");
 
-    public ChatGptSourceStartupTests() => Directory.CreateDirectory(_temporaryDirectory);
+    public McpStartupTests() => Directory.CreateDirectory(_temporaryDirectory);
 
     [Fact]
     public void Disabled_mode_does_not_read_a_configured_key_file()
     {
         var options = ResolveOptions(new Dictionary<string, string?>
         {
-            ["ChatGptSource:Enabled"] = "false",
-            ["ChatGptSource:CursorIntegrityKeyFile"] = Path.Combine(_temporaryDirectory, "does-not-exist"),
+            ["Mcp:Enabled"] = "false",
+            ["Mcp:CursorIntegrityKeyFile"] = Path.Combine(_temporaryDirectory, "does-not-exist"),
         });
 
         options.Enabled.Should().BeFalse();
@@ -35,8 +35,8 @@ public sealed class ChatGptSourceStartupTests : IDisposable
 
         var options = ResolveOptions(new Dictionary<string, string?>
         {
-            ["ChatGptSource:Enabled"] = "true",
-            ["ChatGptSource:CursorIntegrityKey"] = key,
+            ["Mcp:Enabled"] = "true",
+            ["Mcp:CursorIntegrityKey"] = key,
         });
 
         options.CursorIntegrityKey.Should().Be(key);
@@ -49,7 +49,7 @@ public sealed class ChatGptSourceStartupTests : IDisposable
     public void Enabled_mode_accepts_private_ports_at_bounds(string privatePort)
     {
         var values = EnabledDirectConfiguration(CreateKey(32));
-        values["ChatGptSource:PrivatePort"] = privatePort;
+        values["Mcp:PrivatePort"] = privatePort;
 
         ResolveOptions(values).PrivatePort.Should().Be(int.Parse(privatePort));
     }
@@ -61,7 +61,7 @@ public sealed class ChatGptSourceStartupTests : IDisposable
     public void Enabled_mode_rejects_invalid_private_ports_with_stable_error(string privatePort)
     {
         var values = EnabledDirectConfiguration(CreateKey(32));
-        values["ChatGptSource:PrivatePort"] = privatePort;
+        values["Mcp:PrivatePort"] = privatePort;
 
         var action = () => ResolveOptions(values);
 
@@ -78,8 +78,8 @@ public sealed class ChatGptSourceStartupTests : IDisposable
     {
         var options = ResolveOptions(new Dictionary<string, string?>
         {
-            ["ChatGptSource:Enabled"] = "false",
-            ["ChatGptSource:PrivatePort"] = privatePort,
+            ["Mcp:Enabled"] = "false",
+            ["Mcp:PrivatePort"] = privatePort,
         });
 
         options.Enabled.Should().BeFalse();
@@ -156,18 +156,18 @@ public sealed class ChatGptSourceStartupTests : IDisposable
     {
         var keyFile = WriteKeyFile(Encoding.UTF8.GetBytes(CreateKey(32)));
 
-        AssertInvalid(new Dictionary<string, string?> { ["ChatGptSource:Enabled"] = "true" });
+        AssertInvalid(new Dictionary<string, string?> { ["Mcp:Enabled"] = "true" });
         AssertInvalid(new Dictionary<string, string?>
         {
-            ["ChatGptSource:Enabled"] = "true",
-            ["ChatGptSource:CursorIntegrityKey"] = CreateKey(32),
-            ["ChatGptSource:CursorIntegrityKeyFile"] = keyFile,
+            ["Mcp:Enabled"] = "true",
+            ["Mcp:CursorIntegrityKey"] = CreateKey(32),
+            ["Mcp:CursorIntegrityKeyFile"] = keyFile,
         });
         AssertInvalid(new Dictionary<string, string?>
         {
-            ["ChatGptSource:Enabled"] = "true",
-            ["ChatGptSource:CursorIntegrityKey"] = string.Empty,
-            ["ChatGptSource:CursorIntegrityKeyFile"] = keyFile,
+            ["Mcp:Enabled"] = "true",
+            ["Mcp:CursorIntegrityKey"] = string.Empty,
+            ["Mcp:CursorIntegrityKeyFile"] = keyFile,
         });
     }
 
@@ -184,13 +184,13 @@ public sealed class ChatGptSourceStartupTests : IDisposable
         var databasePath = Path.Combine(_temporaryDirectory, "startup.db");
         var startInfo = new ProcessStartInfo("dotnet")
         {
-            Arguments = $"\"{typeof(ChatGptSourceOptions).Assembly.Location}\"",
+            Arguments = $"\"{typeof(McpOptions).Assembly.Location}\"",
             UseShellExecute = false,
             RedirectStandardOutput = true,
             RedirectStandardError = true,
         };
-        startInfo.Environment["ChatGptSource__Enabled"] = "true";
-        startInfo.Environment["ChatGptSource__ApplicationBaseUrl"] = "https://example.com";
+        startInfo.Environment["Mcp__Enabled"] = "true";
+        startInfo.Environment["Mcp__ApplicationBaseUrl"] = "https://example.com";
         startInfo.Environment["Storage__BasePath"] = storagePath;
         startInfo.Environment["ConnectionStrings__DefaultConnection"] = $"Data Source={databasePath}";
         startInfo.Environment["ASPNETCORE_URLS"] = "http://127.0.0.1:0";
@@ -223,23 +223,23 @@ public sealed class ChatGptSourceStartupTests : IDisposable
 
     private static Dictionary<string, string?> EnabledDirectConfiguration(string key) => new()
     {
-        ["ChatGptSource:Enabled"] = "true",
-        ["ChatGptSource:CursorIntegrityKey"] = key,
+        ["Mcp:Enabled"] = "true",
+        ["Mcp:CursorIntegrityKey"] = key,
     };
 
     private static Dictionary<string, string?> EnabledFileConfiguration(string path) => new()
     {
-        ["ChatGptSource:Enabled"] = "true",
-        ["ChatGptSource:CursorIntegrityKeyFile"] = path,
+        ["Mcp:Enabled"] = "true",
+        ["Mcp:CursorIntegrityKeyFile"] = path,
     };
 
-    private static ChatGptSourceOptions ResolveOptions(IReadOnlyDictionary<string, string?> values)
+    private static McpOptions ResolveOptions(IReadOnlyDictionary<string, string?> values)
     {
         var configuration = new ConfigurationBuilder().AddInMemoryCollection(values).Build();
         var services = new ServiceCollection();
-        services.AddChatGptSource(configuration);
+        services.AddMcp(configuration);
         using var provider = services.BuildServiceProvider();
-        return provider.GetRequiredService<IOptions<ChatGptSourceOptions>>().Value;
+        return provider.GetRequiredService<IOptions<McpOptions>>().Value;
     }
 
     private static void AssertInvalid(IReadOnlyDictionary<string, string?> values)

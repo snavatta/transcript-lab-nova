@@ -1,7 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-readonly REPOSITORY_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+REPOSITORY_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/../.." && pwd)"
+readonly REPOSITORY_ROOT
 readonly OVERLAY_FILE="${REPOSITORY_ROOT}/docker-compose.mcp.yml"
 readonly ENV_FILE="${REPOSITORY_ROOT}/.env.example"
 readonly SECRET_NAME='transcriptlab-mcp-cursor-integrity-key'
@@ -35,8 +36,8 @@ require_tools() {
 
 secret_path_from_env_file() {
   local value
-  value="$(awk -F= '$1 == "CHATGPT_SOURCE_CURSOR_KEY_FILE" { print substr($0, index($0, "=") + 1); exit }' "${ENV_FILE}")"
-  [[ -n "${value}" ]] || fail '.env.example does not define CHATGPT_SOURCE_CURSOR_KEY_FILE'
+  value="$(awk -F= '$1 == "MCP_CURSOR_KEY_FILE" { print substr($0, index($0, "=") + 1); exit }' "${ENV_FILE}")"
+  [[ -n "${value}" ]] || fail '.env.example does not define MCP_CURSOR_KEY_FILE'
   printf '%s\n' "${value}"
 }
 
@@ -72,7 +73,7 @@ compose_semantics_hold() {
     --arg expected_secret_path "${expected_secret_path}" \
     --arg expected_urls "${EXPECTED_URLS}" \
     --arg obsolete_pattern "${OBSOLETE_PATTERN}" \
-    --argjson expected_env_keys '["ASPNETCORE_URLS", "ChatGptSource__CursorIntegrityKeyFile", "ChatGptSource__Enabled", "ChatGptSource__PrivatePort"]' \
+    --argjson expected_env_keys '["ASPNETCORE_URLS", "Mcp__CursorIntegrityKeyFile", "Mcp__Enabled", "Mcp__PrivatePort"]' \
     '
       . as $merged
       | input as $base
@@ -93,9 +94,9 @@ compose_semantics_hold() {
           ($merged_ports | length == (($base_ports | length) + 1)),
           (($merged_ports | map(select((.target | tostring) == "5001"))) == [{"mode":"ingress","host_ip":"127.0.0.1","target":5001,"published":"5001","protocol":"tcp"}]),
           ($service.environment.ASPNETCORE_URLS == $expected_urls),
-          ($service.environment.ChatGptSource__Enabled == "true"),
-          ($service.environment.ChatGptSource__PrivatePort == "5001"),
-          ($service.environment.ChatGptSource__CursorIntegrityKeyFile == $secret_target),
+          ($service.environment.Mcp__Enabled == "true"),
+          ($service.environment.Mcp__PrivatePort == "5001"),
+          ($service.environment.Mcp__CursorIntegrityKeyFile == $secret_target),
           ($merged_env_keys == (($base_env_keys + $expected_env_keys) | unique | sort)),
           ($top_level_secrets | keys == [$secret_name]),
           ($top_level_secrets[$secret_name].file == $expected_secret_path),
@@ -184,7 +185,7 @@ verify_invalid_secret_inputs() {
   local merged_json="${TEST_DIRECTORY}/invalid.merged.json"
 
   : >"${unset_env}"
-  printf 'CHATGPT_SOURCE_CURSOR_KEY_FILE=relative/cursor-integrity-key\n' >"${relative_env}"
+  printf 'MCP_CURSOR_KEY_FILE=relative/cursor-integrity-key\n' >"${relative_env}"
 
   if render "${unset_env}" "${REPOSITORY_ROOT}/docker-compose.yml" "${OVERLAY_FILE}" "${merged_json}" 2>/dev/null; then
     render_base "${unset_env}" "${REPOSITORY_ROOT}/docker-compose.yml" "${base_json}"
