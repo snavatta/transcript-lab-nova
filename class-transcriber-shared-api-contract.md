@@ -119,6 +119,7 @@ WhisperNetCoreML
 OpenVinoWhisperSidecar
 OnnxWhisper
 OpenAiCompatible
+OpenRouter
 ```
 
 Implementation note:
@@ -131,6 +132,7 @@ Implementation note:
 - `OpenVinoWhisperSidecar` uses a long-lived Python FastAPI sidecar backed by `openvino_genai`. The sidecar exposes an OpenAI-compatible `/v1/audio/transcriptions` endpoint and a model management API. It caches loaded Whisper pipelines in memory between jobs and manages its own model downloads internally. The C# engine communicates with it via `ISpeechToTextClient` (Microsoft.Extensions.AI experimental). It is the recommended OpenVINO engine for deployments with a local GPU.
 - `OnnxWhisper` is a reserved placeholder for a future native .NET ONNX Whisper engine using `Microsoft.ML.OnnxRuntime`. It is not yet implemented and reports unavailable in all current releases.
 - `OpenAiCompatible` is a generic proxy engine that forwards transcription to any external service that exposes an OpenAI-compatible `/v1/audio/transcriptions` endpoint (e.g., the local `OpenVinoWhisperSidecar`, Whisper.cpp server, Ollama). It is hidden from the engine selector when `BaseUrl` is not configured.
+- `OpenRouter` is a first-class hosted speech-to-text engine using OpenRouter's `/api/v1/audio/transcriptions` endpoint. It is hidden from the engine selector until a server-side API key is configured. Its transcription-capable models are discovered through `/api/v1/models?output_modalities=transcription`, the selected model is stored in each project's existing `model` field, and its remote models are not included in the local Model Manager catalog.
 - `WhisperNet`, `WhisperNetCuda`, and `WhisperNetCoreML` use shared ggml model files and support auto-download. `WhisperNetCoreML` also requires the matching CoreML encoder `.mlmodelc` package beside the ggml model.
 - `OpenVinoWhisperSidecar` uses curated pre-exported model directories under `models/openvino-genai/` and supports managed download/redownload/probe from the settings model manager. Download is proxied to the sidecar's own model management API.
 

@@ -6,6 +6,10 @@ describe('formatEngineLabel', () => {
   it('formats WhisperNetCoreML', () => {
     expect(formatEngineLabel('WhisperNetCoreML')).toBe('WhisperNet.CoreML');
   });
+
+  it('formats OpenRouter', () => {
+    expect(formatEngineLabel('OpenRouter')).toBe('OpenRouter');
+  });
 });
 
 describe('getModelsForEngine', () => {
@@ -18,5 +22,9 @@ describe('getModelsForEngine', () => {
       'large',
       'large-v3-turbo',
     ]);
+  });
+
+  it('keeps OpenRouter models data-driven', () => {
+    expect(getModelsForEngine('OpenRouter')).toEqual([]);
   });
 });

@@ -1,3 +1,4 @@
+using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
@@ -16,6 +17,12 @@ internal sealed class OpenAiVerboseTranscriptionResponse
     [JsonPropertyName("duration")] public double Duration { get; set; }
     [JsonPropertyName("text")] public string? Text { get; set; }
     [JsonPropertyName("segments")] public OpenAiTranscriptionSegment[]? Segments { get; set; }
+    [JsonPropertyName("usage")] public OpenAiTranscriptionUsage? Usage { get; set; }
+}
+
+internal sealed class OpenAiTranscriptionUsage
+{
+    [JsonPropertyName("seconds")] public double? Seconds { get; set; }
 }
 
 internal sealed class OpenAiTranscriptionSegment
@@ -24,6 +31,16 @@ internal sealed class OpenAiTranscriptionSegment
     [JsonPropertyName("start")] public double Start { get; set; }
     [JsonPropertyName("end")] public double End { get; set; }
     [JsonPropertyName("text")] public string Text { get; set; } = string.Empty;
+}
+
+internal sealed class OpenAiTranscriptionException(
+    HttpStatusCode statusCode,
+    bool responseFormatRejected,
+    string message)
+    : InvalidOperationException(message)
+{
+    public HttpStatusCode StatusCode { get; } = statusCode;
+    public bool ResponseFormatRejected { get; } = responseFormatRejected;
 }
 
 // ---------------------------------------------------------------------------
@@ -49,15 +66,19 @@ internal static class OpenAiAudioTranscriptionHelper
         string? language,
         Stream audioStream,
         CancellationToken cancellationToken,
-        string? device = null)
+        string? device = null,
+        string responseFormat = "verbose_json",
+        bool leaveAudioStreamOpen = false,
+        bool includeProviderErrorDetail = true)
     {
         using var content = new MultipartFormDataContent();
 
-        var streamContent = new StreamContent(audioStream);
+        var streamContent = new StreamContent(
+            leaveAudioStreamOpen ? new LeaveOpenStream(audioStream) : audioStream);
         streamContent.Headers.ContentType = new("audio/wav");
         content.Add(streamContent, "file", "audio.wav");
         content.Add(new StringContent(modelId), "model");
-        content.Add(new StringContent("verbose_json"), "response_format");
+        content.Add(new StringContent(responseFormat), "response_format");
         if (!string.IsNullOrWhiteSpace(language))
             content.Add(new StringContent(language), "language");
         if (!string.IsNullOrWhiteSpace(device))
@@ -72,9 +93,13 @@ internal static class OpenAiAudioTranscriptionHelper
         if (!response.IsSuccessStatusCode)
         {
             var detail = await response.Content.ReadAsStringAsync(cancellationToken);
-            var normalizedDetail = NormalizeErrorDetail(detail);
-            throw new InvalidOperationException(
-                $"OpenAI-compatible transcription API returned HTTP {(int)response.StatusCode}: {normalizedDetail}");
+            var message = $"OpenAI-compatible transcription API returned HTTP {(int)response.StatusCode}.";
+            if (includeProviderErrorDetail)
+                message = $"OpenAI-compatible transcription API returned HTTP {(int)response.StatusCode}: {NormalizeErrorDetail(detail)}";
+            throw new OpenAiTranscriptionException(
+                response.StatusCode,
+                IsResponseFormatRejection(detail),
+                message);
         }
 
         var parsed = await response.Content.ReadFromJsonAsync<OpenAiVerboseTranscriptionResponse>(cancellationToken);
@@ -90,6 +115,31 @@ internal static class OpenAiAudioTranscriptionHelper
         return speechResponse;
     }
 
+    private static bool IsResponseFormatRejection(string detail)
+    {
+        var trimmed = detail.Trim();
+        if (string.IsNullOrWhiteSpace(trimmed))
+            return false;
+
+        try
+        {
+            var payload = JsonSerializer.Deserialize<OpenAiErrorResponse>(trimmed);
+            var providerMessage = payload?.Detail ?? payload?.Error?.Message;
+            if (!string.IsNullOrWhiteSpace(providerMessage))
+                return ContainsResponseFormatName(providerMessage);
+        }
+        catch (JsonException)
+        {
+            return ContainsResponseFormatName(trimmed);
+        }
+
+        return ContainsResponseFormatName(trimmed);
+    }
+
+    private static bool ContainsResponseFormatName(string value)
+        => value.Contains("response_format", StringComparison.OrdinalIgnoreCase)
+            || value.Contains("verbose_json", StringComparison.OrdinalIgnoreCase);
+
     private static string NormalizeErrorDetail(string detail)
     {
         var trimmed = detail.Trim();
@@ -99,19 +149,45 @@ internal static class OpenAiAudioTranscriptionHelper
         try
         {
             var payload = JsonSerializer.Deserialize<OpenAiErrorResponse>(trimmed);
-            if (!string.IsNullOrWhiteSpace(payload?.Detail))
-                return payload.Detail.Trim();
+            var providerMessage = payload?.Detail ?? payload?.Error?.Message;
+            if (!string.IsNullOrWhiteSpace(providerMessage))
+                return providerMessage.Trim();
         }
         catch (JsonException)
         {
-            // Fall back to the raw body when the endpoint did not return JSON.
+            return trimmed;
         }
 
         return trimmed;
     }
 }
 
+file sealed class LeaveOpenStream(Stream inner) : Stream
+{
+    public override bool CanRead => inner.CanRead;
+    public override bool CanSeek => inner.CanSeek;
+    public override bool CanWrite => inner.CanWrite;
+    public override long Length => inner.Length;
+    public override long Position { get => inner.Position; set => inner.Position = value; }
+
+    public override void Flush() => inner.Flush();
+    public override int Read(byte[] buffer, int offset, int count) => inner.Read(buffer, offset, count);
+    public override long Seek(long offset, SeekOrigin origin) => inner.Seek(offset, origin);
+    public override void SetLength(long value) => inner.SetLength(value);
+    public override void Write(byte[] buffer, int offset, int count) => inner.Write(buffer, offset, count);
+
+    protected override void Dispose(bool disposing)
+    {
+    }
+}
+
 file sealed class OpenAiErrorResponse
 {
     [JsonPropertyName("detail")] public string? Detail { get; set; }
+    [JsonPropertyName("error")] public OpenAiNestedError? Error { get; set; }
+}
+
+file sealed class OpenAiNestedError
+{
+    [JsonPropertyName("message")] public string? Message { get; set; }
 }

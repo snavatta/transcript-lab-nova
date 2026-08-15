@@ -341,6 +341,7 @@ Current backend extension points may additionally expose:
 - `OpenVinoWhisperSidecar`
 - `OnnxWhisper`
 - `OpenAiCompatible`
+- `OpenRouter`
 
 Implementation note:
 - `SherpaOnnx` may run on a local .NET runtime path or isolated helper worker as long as it stays behind the transcription engine abstraction.
@@ -349,6 +350,7 @@ Implementation note:
 - `OpenVinoWhisperSidecar` runs through a long-lived Python FastAPI sidecar with an OpenAI-compatible API. The sidecar manages its own model downloads. The C# engine uses `ISpeechToTextClient` (Microsoft.Extensions.AI experimental) internally. It is the recommended OpenVINO engine for deployments with local GPU hardware.
 - `OnnxWhisper` is a reserved placeholder for a future native .NET ONNX Whisper engine. It reports unavailable and must not be used in production.
 - `OpenAiCompatible` proxies transcription to any configured OpenAI-compatible API. It must not appear in the engine selector when `BaseUrl` is not configured.
+- `OpenRouter` sends prepared audio to OpenRouter's hosted speech-to-text endpoint and discovers transcription-capable models dynamically. It must not appear in the engine selector when its server-side API key is not configured, must use the model stored in each project's settings, and must remain outside the local filesystem Model Manager.
 
 ## Suggested model values for MVP
 - `tiny`

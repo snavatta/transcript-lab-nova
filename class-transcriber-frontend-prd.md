@@ -533,6 +533,7 @@ The app must expose a global settings page for future uploads.
 - upload modal should start from global defaults but allow override per batch
 - batch and retry flows should allow diarization to be enabled or disabled per request
 - engine selectors in settings, upload, retry, diagnostics, and model management should surface runtime-available engines from the backend, including Intel GPU options such as `OpenVinoWhisperSidecar` and native Apple Silicon options such as `WhisperNetCoreML` when those runtimes are installed
+- when `OpenRouter` is available, settings, upload, and retry selectors should show its backend-discovered transcription models and clearly disclose that audio is sent to a remote provider; OpenRouter models must not appear in the local filesystem Model Manager
 - the settings page should also expose a model manager below the defaults form in a vertical stack layout
 - the model manager should show known engine/model combinations, local install state, install path, and the latest probe result
 - installed models should be probed on page load so runtime problems are visible without queueing an upload

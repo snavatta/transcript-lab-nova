@@ -240,6 +240,24 @@ try
             client.DefaultRequestHeaders.Authorization =
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", opts.ApiKey);
     });
+    builder.Services.Configure<OpenRouterOptions>(builder.Configuration.GetSection("Transcription:OpenRouter"));
+    builder.Services.AddSingleton<IRegisteredTranscriptionEngine, OpenRouterTranscriptionEngine>();
+    builder.Services.AddKeyedSingleton<ISpeechToTextClient, OpenRouterSpeechToTextClient>("OpenRouter");
+    builder.Services.AddHttpClient(OpenRouterTranscriptionEngine.HttpClientName, (sp, client) =>
+    {
+        var opts = sp.GetRequiredService<IOptions<OpenRouterOptions>>().Value;
+        if (Uri.TryCreate(opts.BaseUrl.TrimEnd('/') + "/", UriKind.Absolute, out var baseUri)
+            && string.Equals(baseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            client.BaseAddress = baseUri;
+            if (!string.IsNullOrWhiteSpace(opts.ApiKey))
+            {
+                client.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", opts.ApiKey);
+            }
+        }
+        client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds > 0 ? opts.TimeoutSeconds : 120);
+    });
     builder.Services.AddSingleton<ICudaEnvironmentProbe, CudaEnvironmentProbe>();
     builder.Services.AddSingleton<ISherpaOnnxWorkerRunner, SherpaOnnxWorkerRunner>();
     builder.Services.AddSingleton<IWhisperNetWorkerRunner, WhisperNetWorkerRunner>();

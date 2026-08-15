@@ -224,6 +224,7 @@ async function installMockApi(page: Page, options?: { seedCompletedProject?: boo
           { engine: 'WhisperNet', models: ['tiny', 'base', 'small'] },
           { engine: 'WhisperNetCuda', models: ['small'] },
           { engine: 'OpenVinoGenAi', models: ['base-int8', 'small-fp16', 'tiny-int8'] },
+          { engine: 'OpenRouter', models: ['openai/whisper-large-v3'] },
         ],
       });
     }
@@ -598,6 +599,36 @@ test('supports folder creation, upload review, queue monitoring, project polling
   await expect(page.getByRole('menuitem', { name: 'Markdown (.md)' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'HTML (.html)' })).toBeVisible();
   await expect(page.getByRole('menuitem', { name: 'PDF (.pdf)' })).toBeVisible();
+});
+
+test('selects OpenRouter defaults without treating remote models as local installs', async ({ page }) => {
+  await installMockApi(page);
+
+  await page.goto('/settings');
+  await page.getByRole('combobox').nth(0).click();
+  await page.getByRole('option', { name: 'OpenRouter' }).click();
+
+  await expect(page.getByRole('combobox').nth(1)).toHaveText(/openai\/whisper-large-v3/);
+  await expect(page.getByText(/hosted speech-to-text API/i)).toBeVisible();
+  await expect(page.getByText(/requires an OpenRouter API key configured on the server/i)).toBeVisible();
+  await expect(page.getByText(/audio is sent to the selected remote transcription provider/i)).toBeVisible();
+  await expect(page.getByRole('table').getByText('OpenRouter', { exact: true })).toHaveCount(0);
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await expect(page.getByText(/swipe horizontally to view model status and actions/i)).toBeVisible();
+  const modelManagerScroll = page.getByTestId('model-manager-scroll');
+  await expect.poll(() => modelManagerScroll.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
+  await modelManagerScroll.evaluate((element) => {
+    element.scrollLeft = element.scrollWidth;
+  });
+  const probeIsHorizontallyReachable = await page.getByRole('button', { name: 'Probe' }).first().evaluate((button) => {
+    const scrollContainer = button.closest('[data-testid="model-manager-scroll"]');
+    if (!scrollContainer) return false;
+    const buttonRect = button.getBoundingClientRect();
+    const containerRect = scrollContainer.getBoundingClientRect();
+    return buttonRect.left >= containerRect.left && buttonRect.right <= containerRect.right;
+  });
+  expect(probeIsHorizontallyReachable).toBe(true);
 });
 
 for (const viewport of MOBILE_VIEWPORTS) {

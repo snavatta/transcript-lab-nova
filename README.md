@@ -217,6 +217,18 @@ Uses the supported OpenVINO Whisper sidecar for Intel GPU acceleration. The back
 
 OpenVINO Whisper models are stored under `data/models/openvino-genai/` and can be downloaded on first use or through `POST /api/settings/models/manage`.
 
+#### OpenRouter (hosted speech-to-text)
+
+OpenRouter is available as a first-class remote engine when a server-side API key is configured. TranscriptLab discovers the current speech-to-text model catalog at runtime, stores the selected model with each project, and keeps remote models out of the local Model Manager.
+
+Configure the key with an environment variable so it is never committed:
+
+```bash
+export Transcription__OpenRouter__ApiKey=YOUR_OPENROUTER_API_KEY
+```
+
+Optional settings can override `Transcription__OpenRouter__BaseUrl`, `FallbackModels`, and `TimeoutSeconds`. `BaseUrl` must be an absolute HTTPS URL. Prepared audio is uploaded to OpenRouter's hosted `/api/v1/audio/transcriptions` endpoint.
+
 Configuration for all WhisperNet engines in `appsettings.json`:
 ```json
 {
