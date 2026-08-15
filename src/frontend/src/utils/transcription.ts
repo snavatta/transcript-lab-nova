@@ -14,6 +14,8 @@ export function formatEngineLabel(engine: string): string {
       return 'ONNX Whisper (coming soon)';
     case 'OpenAiCompatible':
       return 'OpenAI-Compatible API';
+    case 'OpenRouter':
+      return 'OpenRouter';
     default:
       return engine;
   }

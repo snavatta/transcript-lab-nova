@@ -261,7 +261,9 @@ export default function SettingsPage() {
               </FormControl>
             </Box>
 
-            {(form.defaultEngine === 'OpenVinoWhisperSidecar' || form.defaultEngine === 'OpenAiCompatible') && (
+            {(form.defaultEngine === 'OpenVinoWhisperSidecar'
+              || form.defaultEngine === 'OpenAiCompatible'
+              || form.defaultEngine === 'OpenRouter') && (
               <Box
                 sx={{
                   display: 'flex',
@@ -276,7 +278,9 @@ export default function SettingsPage() {
                 <Typography variant="caption" color="text.secondary">
                   {form.defaultEngine === 'OpenVinoWhisperSidecar'
                     ? 'Uses a local OpenVINO GPU sidecar. Requires the OpenVINO Python environment to be configured.'
-                    : 'Requires backend configuration in appsettings.json. Contact your administrator to configure the target URL and model.'}
+                    : form.defaultEngine === 'OpenRouter'
+                      ? "Uses OpenRouter's hosted speech-to-text API. Requires an OpenRouter API key configured on the server. Audio is sent to the selected remote transcription provider."
+                      : 'Requires backend configuration in appsettings.json. Contact your administrator to configure the target URL and model.'}
                 </Typography>
               </Box>
             )}
@@ -412,7 +416,18 @@ export default function SettingsPage() {
           {modelsLoading && !modelCatalog ? (
             <Skeleton variant="rounded" height={320} />
           ) : (
-            <TableContainer>
+            <>
+              <Typography
+                variant="caption"
+                color="text.secondary"
+                sx={{ display: { xs: 'block', sm: 'none' }, mb: 1 }}
+              >
+                Swipe horizontally to view model status and actions.
+              </Typography>
+              <TableContainer
+                data-testid="model-manager-scroll"
+                sx={{ overflowX: 'auto', pb: { xs: 1, sm: 0 } }}
+              >
               <Table size="small" sx={{ minWidth: 600 }}>
                 <TableHead>
                   <TableRow>
@@ -539,7 +554,8 @@ export default function SettingsPage() {
                   ))}
                 </TableBody>
               </Table>
-            </TableContainer>
+              </TableContainer>
+            </>
           )}
         </Paper>
       </Box>

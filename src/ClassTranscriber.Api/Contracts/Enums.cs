@@ -39,5 +39,6 @@ public enum TranscriptionEngine
     WhisperNetCoreML,
     OpenVinoWhisperSidecar,
     OnnxWhisper,
-    OpenAiCompatible
+    OpenAiCompatible,
+    OpenRouter
 }
