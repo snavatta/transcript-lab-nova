@@ -25,7 +25,7 @@
 #
 # Examples:
 #   # Install into an existing venv
-#   source /home/user/whisper-ov-venv/bin/activate
+#   source /path/to/whisper-ov-venv/bin/activate
 #   ./scripts/setup-openvino-whisper-sidecar.sh
 #
 #   # Create a fresh venv and install (default — no --venv flag needed)

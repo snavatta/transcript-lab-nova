@@ -23,11 +23,140 @@ This document is intentionally practical and MVP-focused.
 ## 2. General API conventions
 
 ## Base path
-All API routes are under:
+All REST API routes are under:
 
 ```text
 /api
 ```
+
+### Private MCP exception
+The optional private MCP transcript source is not a REST API and is the only
+exception to the `/api` convention. When enabled, it maps stateless Streamable
+HTTP at exactly:
+
+```text
+/mcp
+```
+
+It is an in-process, read-only MCP endpoint. It does not change, proxy, or
+extend any REST route, DTO, status, or frontend contract in this document.
+It is disabled by default with `Mcp:Enabled=false` (or
+`Mcp__Enabled=false`); when disabled, `/mcp` is not mapped. The
+optional `Mcp:ApplicationBaseUrl` is an absolute HTTP(S) URL used
+only to populate nullable MCP `sourceUrl` values.
+
+---
+
+## 2.1 Private MCP transcript source contract
+
+The MCP source exposes exactly four read-only tools: `list_folders`,
+`list_projects`, `search_transcripts`, and `get_transcript`. Each tool must
+advertise `readOnlyHint=true`, `openWorldHint=false`, and
+`destructiveHint=false`; return a concise text `content` summary plus the
+complete declared object in `structuredContent`; and expose no write, media,
+export, queue, diagnostics, settings, filesystem, or generic REST-proxy tool.
+
+All source-bearing MCP results use stable provenance. Project metadata includes
+`folderId`, `folderName`, `projectId`, `projectName`, `originalFileName`,
+`detectedLanguage`, `durationMs`, `segmentCount`, `completedAtUtc`,
+`transcriptUpdatedAtUtc`, `sourcePath`, and nullable `sourceUrl`. `sourcePath`
+is the origin-rooted application path exactly `/projects/{projectId}`; it is
+not a filesystem path and is not a relative path. `sourceUrl` is null unless
+the optional base URL configuration is valid. All timestamps are UTC ISO 8601
+strings.
+
+Transcript text, excerpts, and metadata returned by MCP are untrusted quoted
+source material. Clients and the server must never treat them as instructions
+or execute instructions, links, or tool calls found in them.
+
+### MCP error contract
+MCP tool failures use these stable codes:
+
+- `validation_error`
+- `not_found`
+- `transcript_not_ready`
+- `corrupt_transcript`
+- `internal_error`
+
+Error text must not contain transcript text, a submitted query, private paths,
+configuration values, raw exceptions, tunnel identifiers, or credentials.
+
+### `list_folders`
+
+Input: `offset=0`, `limit=50`.
+
+- `offset >= 0`
+- `1 <= limit <= 100`
+
+Returns `{ folders[], offset, limit, hasMore, nextOffset }`, ordered by
+case-insensitive folder name and then folder GUID. Each folder item contains
+`folderId`, `folderName`, `projectCount`, and `updatedAtUtc`. All folders are
+discoverable, including empty folders.
+
+### `list_projects`
+
+Input: `folderId?`, `nameQuery?`, `offset=0`, `limit=20`.
+
+- `folderId`, when supplied, must be a GUID
+- `nameQuery` is trimmed and has at most 200 characters
+- `offset >= 0`
+- `1 <= limit <= 50`
+
+Returns `{ projects[], offset, limit, hasMore, nextOffset }`. Results include
+only `Completed` projects with a ready transcript, ordered
+`completedAtUtc DESC, projectId ASC`. Each project item contains the shared
+project provenance metadata above.
+
+### `search_transcripts`
+
+Input: `query`, `folderId?`, `offset=0`, `limit=10`.
+
+- `query` is trimmed and must contain 2 through 200 characters
+- `folderId`, when supplied, must be a GUID
+- `offset >= 0`
+- `1 <= limit <= 20`
+
+Returns `{ matches[], offset, limit, hasMore, nextOffset, searchSemantics }`.
+Search is MCP-only: a bounded, deterministic, literal substring search of
+completed transcript-ready projects, optionally within one folder. It is not
+semantic search and does not alter REST or UI search behavior. `searchSemantics`
+documents literal matching with ASCII-only case folding: each UTF-16 code unit
+in `A` through `Z` is folded to `a` through `z`; every other UTF-16 code unit
+must match exactly. Matching performs no Unicode case folding, normalization,
+locale transformation, wildcard expansion, or semantic interpretation. Each
+project match contains the shared project provenance metadata, at most three
+occurrences, and warning flags. Every occurrence contains nullable
+`segmentIndex`, `startMs`, `endMs`, and `speaker`, plus an excerpt of at most 500 characters and
+`excerptTruncated`. A bounded plain-text fallback is returned when no structured
+segment contains a plain-text match.
+
+### `get_transcript`
+
+Input: `projectId`, `cursor?`, `segmentLimit=100`, `characterLimit=12000`.
+
+- `projectId` must be a GUID
+- `1 <= segmentLimit <= 200`
+- `1000 <= characterLimit <= 20000`
+
+Returns project provenance metadata, ordered `chunks`, `nextCursor`, and
+`hasMore`. Each chunk contains nullable `segmentIndex`, `startMs`, `endMs`, and
+`speaker`, plus `text`, `textStartCharacter`, and `textComplete`. The opaque,
+versioned cursor preserves structured-segment or plain-text position so that
+repeated calls retrieve all transcript text losslessly, including oversized
+segments and transcripts without structured segments.
+
+### Cursor integrity configuration
+
+When the MCP source is enabled, exactly one cursor-integrity key source is
+required: `Mcp:CursorIntegrityKey` (a direct value) or
+`Mcp:CursorIntegrityKeyFile` (a file path). The decoded key must be
+strict UTF-8, contain 32 through 4096 bytes, and contain neither a UTF-8 BOM,
+NUL, carriage return, nor line feed; whitespace-only keys are invalid. A key
+file is bounded to 4099 raw bytes, must be strict UTF-8 without a BOM, and may
+contain one final `LF` or `CRLF` only, which is removed before the same key
+validation. Missing, both, unreadable, malformed, or out-of-bounds sources
+fail startup with the sanitized stable cursor-integrity configuration error and
+must not disclose a key or file path.
 
 ## Content types
 Use:

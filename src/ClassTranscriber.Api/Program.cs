@@ -1,5 +1,6 @@
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ClassTranscriber.Api;
 using ClassTranscriber.Api.Endpoints;
 using ClassTranscriber.Api.Frontend;
 using ClassTranscriber.Api.Jobs;
@@ -22,6 +23,7 @@ Log.Logger = new LoggerConfiguration()
 try
 {
     var builder = WebApplication.CreateBuilder(args);
+    McpStartupConfiguration.Validate(builder.Configuration);
     var uploadOptions = builder.Configuration.GetSection(UploadOptions.SectionName).Get<UploadOptions>() ?? new UploadOptions();
     if (uploadOptions.MaxRequestBodySizeBytes <= 0)
         uploadOptions.MaxRequestBodySizeBytes = UploadOptions.DefaultMaxRequestBodySizeBytes;
@@ -46,6 +48,7 @@ try
 
     builder.Services.AddEndpointsApiExplorer();
     builder.Services.AddSwaggerGen();
+    builder.Services.AddMcp(builder.Configuration);
 
     builder.Services.ConfigureHttpJsonOptions(options =>
     {
@@ -287,6 +290,7 @@ try
     });
 
     var app = builder.Build();
+    app.UseMcpPortGuard();
 
     using (var scope = app.Services.CreateScope())
     {
@@ -321,6 +325,7 @@ try
 
     app.UseCors();
     app.UseFrontendAppShellAssets();
+    app.MapMcp();
 
     app.MapGet("/api/health", () => Results.Ok(new { status = "healthy" }))
         .WithName("HealthCheck")
@@ -339,9 +344,18 @@ try
 
     app.Run();
 }
+catch (OptionsValidationException exception) when (
+    exception.Failures.All(failure =>
+        string.Equals(failure, McpOptions.CursorIntegrityConfigurationError, StringComparison.Ordinal)
+        || string.Equals(failure, McpOptions.PrivatePortConfigurationError, StringComparison.Ordinal)))
+{
+    Console.Error.WriteLine(exception.Failures.Single());
+    Environment.ExitCode = 1;
+}
 catch (Exception ex)
 {
     Log.Fatal(ex, "Application terminated unexpectedly");
+    Environment.ExitCode = 1;
 }
 finally
 {

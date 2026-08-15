@@ -45,7 +45,8 @@ Provide a reliable local backend for organizing, queueing, transcribing, and exp
 - Cloud storage
 - Advanced collaboration/editing workflows
 - Nested folders
-- Full text search across all transcripts
+- REST/UI full-text search across all transcripts (the opt-in private MCP
+  source has its separately bounded literal substring search)
 - Transcript manual editing
 
 ---
@@ -794,7 +795,47 @@ Behavior:
 
 ---
 
-## 16. API contract guidelines
+## 16. Private MCP transcript source
+
+An opt-in, in-process, read-only MCP source may expose completed,
+transcript-ready projects to independently managed MCP clients. It is separate
+from the REST API and maps stateless Streamable HTTP at exactly `/mcp` only
+when enabled. It must
+provide only `list_folders`, `list_projects`, `search_transcripts`, and
+`get_transcript`, as defined by the shared API contract. It does not add REST
+routes, DTOs, statuses, frontend behavior, authentication, media/export access,
+filesystem access, or write operations.
+
+`search_transcripts` is the sole transcript-wide search requirement for MVP.
+It performs bounded, deterministic literal substring search over completed
+transcript-ready plain text, with optional folder scope, bounded occurrences,
+and a bounded plain-text fallback. It is neither semantic search nor an
+extension of REST/UI search; REST/UI cross-transcript search remains out of
+scope. Case-insensitive comparison folds only ASCII `A` through `Z` to `a`
+through `z` per UTF-16 code unit; every other code unit must match exactly, with
+no Unicode case folding or normalization. Results and retrieval carry
+project/folder/timestamp provenance, including the origin-rooted application
+`sourcePath` exactly `/projects/{projectId}`, and all transcript text is
+untrusted source material rather than instructions.
+
+When enabled, the source requires exactly one cursor-integrity key source:
+the direct `Mcp:CursorIntegrityKey` or
+`Mcp:CursorIntegrityKeyFile`. Keys use strict UTF-8 and must be 32
+through 4096 bytes after validation; key files are bounded to 4099 raw bytes,
+have no BOM, and may have one final `LF` or `CRLF` only. Invalid or unreadable
+key configuration must fail startup using the sanitized stable configuration
+error without disclosing a key or path.
+
+The source is disabled by default. When enabled for container deployment, it
+must remain private on its dedicated host-loopback listener (port 5001); the
+normal UI and REST listener remains on port 5000. The backend must not run,
+bundle, configure, or store any external-client credentials or state. MCP logs
+and errors must not contain raw queries, transcript text, tool results, private
+paths/URLs, client identifiers, or credentials.
+
+---
+
+## 17. API contract guidelines
 
 ## Response conventions
 Use consistent response models.
@@ -815,7 +856,7 @@ Recommendation:
 
 ---
 
-## 17. Export generation requirements
+## 18. Export generation requirements
 
 The backend must support export generation for:
 - TXT
@@ -823,7 +864,7 @@ The backend must support export generation for:
 - HTML
 - PDF
 
-## 17.1 Export source
+## 18.1 Export source
 Exports should be generated from structured transcript data where possible, not only from plain text.
 
 This ensures support for:
@@ -831,7 +872,7 @@ This ensures support for:
 - future subtitle generation
 - consistent formatting
 
-## 17.2 Common export contents
+## 18.2 Common export contents
 Each export should include:
 - project title
 - original file name
@@ -839,7 +880,7 @@ Each export should include:
 - processing date if available
 - transcript body
 
-## 17.3 Format expectations
+## 18.3 Format expectations
 
 ### TXT
 - plain text
@@ -856,7 +897,7 @@ Each export should include:
 ### PDF
 - printable document version
 
-## 17.4 PDF implementation guidance
+## 18.4 PDF implementation guidance
 Implementation may use:
 - HTML-to-PDF generation
 - or another practical PDF library
@@ -865,7 +906,7 @@ The MVP should prioritize correctness and maintainability over visual complexity
 
 ---
 
-## 18. Transcript representation requirements
+## 19. Transcript representation requirements
 
 Store transcript data in at least two forms:
 
@@ -887,7 +928,7 @@ They enable:
 
 ---
 
-## 19. Settings behavior requirements
+## 20. Settings behavior requirements
 
 Global settings must:
 - be persisted
@@ -900,7 +941,7 @@ Project settings must:
 
 This distinction is important and required.
 
-## 19.1 Storage accounting behavior
+## 20.1 Storage accounting behavior
 - storage usage should be persisted or computable without expensive full rescans on every request
 - project storage fields should distinguish original media size from derived workspace size
 - folder storage totals may be aggregated from projects and updated asynchronously if needed
@@ -908,7 +949,7 @@ This distinction is important and required.
 
 ---
 
-## 20. Logging and observability requirements
+## 21. Logging and observability requirements
 
 The backend should produce useful logs for:
 - folder creation/update/delete attempts
@@ -918,16 +959,19 @@ The backend should produce useful logs for:
 - transcription start/finish/failure
 - export generation
 - settings updates
+- MCP endpoint lifecycle and sanitized tool outcome codes
 
 Recommended minimum:
 - structured logging
 - one correlation path per project/job if practical
 
 Do not overcomplicate observability in MVP, but keep logs useful.
+Never log raw MCP queries, transcript text, tool results, configured private
+URLs, client identifiers, API keys, credentials, or unredacted evidence.
 
 ---
 
-## 21. Error handling requirements
+## 22. Error handling requirements
 
 ## Must handle gracefully
 - invalid folder id
@@ -944,14 +988,19 @@ Do not overcomplicate observability in MVP, but keep logs useful.
 - keep concise, user-safe error messages in API responses
 - log detailed errors internally
 
+MCP errors additionally use only the shared stable codes and omit transcript,
+query, private-path, configuration, credential, and raw-exception data.
+
 ---
 
-## 22. Security and access assumptions
+## 23. Security and access assumptions
 
 MVP assumptions:
 - no auth
 - homelab/local/private network usage
 - no internet-facing hardening required beyond basic safe coding
+- the optional MCP source is private and host-loopback-only on its dedicated
+  listener; it must not add LAN/public exposure or port-5000 MCP routing
 
 Even without auth, still do basic safety:
 - validate file names/paths
@@ -967,7 +1016,7 @@ Even without auth, still do basic safety:
 
 ---
 
-## 23. Performance and scalability expectations
+## 24. Performance and scalability expectations
 
 ## MVP target behavior
 - Handles multiple queued files reliably
@@ -982,7 +1031,7 @@ Even without auth, still do basic safety:
 
 ---
 
-## 24. Suggested service abstractions
+## 25. Suggested service abstractions
 
 Recommended service interfaces:
 
@@ -1004,7 +1053,7 @@ This is guidance, not a rigid requirement.
 
 ---
 
-## 25. Suggested repository/data abstractions
+## 26. Suggested repository/data abstractions
 
 Optional but useful:
 - `IFolderRepository`
@@ -1018,7 +1067,7 @@ Do not over-engineer repositories if unnecessary.
 
 ---
 
-## 26. Suggested request/response DTOs
+## 27. Suggested request/response DTOs
 
 ## Folder DTO
 - `id`
@@ -1068,7 +1117,7 @@ Includes summary fields plus:
 
 ---
 
-## 27. Recommended implementation order
+## 28. Recommended implementation order
 
 1. Folder CRUD
 2. Settings persistence
@@ -1087,7 +1136,7 @@ Includes summary fields plus:
 
 ---
 
-## 28. Acceptance criteria
+## 29. Acceptance criteria
 
 The MVP backend is acceptable when it can:
 
@@ -1107,11 +1156,12 @@ The MVP backend is acceptable when it can:
 
 ---
 
-## 29. Future enhancements (not MVP)
+## 30. Future enhancements (not MVP)
 
 - Multiple transcription engines
 - SRT/VTT export
-- Full-text transcript search
+- REST/UI full-text transcript search beyond the bounded MCP-only literal
+  substring search
 - Nested folders
 - Re-transcription with modified settings
 - Bulk export
@@ -1123,7 +1173,7 @@ The MVP backend is acceptable when it can:
 
 ---
 
-## 30. Codex implementation notes
+## 31. Codex implementation notes
 
 The backend agent should prioritize:
 - pragmatic domain model

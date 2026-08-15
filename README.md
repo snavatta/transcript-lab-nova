@@ -88,6 +88,20 @@ In local development, SQLite and all runtime artifacts are stored under the repo
 When a WhisperNet model is selected for the first time, the backend can download the missing `ggml-*.bin` file into the configured `models/` directory automatically.
 The default upload request limit is 10 GiB. Override it with `Uploads__MaxRequestBodySizeBytes` if you need a different ceiling. Multipart upload buffering uses the configured storage temp directory by default.
 
+### Optional MCP transcript source
+
+TranscriptLab Nova can expose its four read-only transcript-source tools through
+an opt-in, stateless MCP endpoint at `/mcp`. It is disabled by default. The
+private MCP Compose overlay publishes this endpoint only on host loopback port
+5001; the normal UI, REST API, and health endpoint remain on port 5000. CUDA
+and OpenVINO images use the same MCP implementation and need no distinct setup.
+
+For the private-server setup, trust boundary, verification, and teardown, see
+[`docs/mcp-transcript-source-runbook.md`](docs/mcp-transcript-source-runbook.md).
+An independently managed host client connects to `http://127.0.0.1:5001/mcp`.
+Its installation, credentials, lifecycle, health, and entitlement are outside
+this repository.
+
 ### Data Storage
 
 Runtime data is split by environment:

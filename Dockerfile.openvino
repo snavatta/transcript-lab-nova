@@ -33,6 +33,7 @@ USER root
 RUN apt-get update \
     && DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
         software-properties-common \
+        curl \
         ffmpeg \
         python3 \
         python3-venv \

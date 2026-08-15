@@ -1,5 +1,7 @@
+using System.Net;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ClassTranscriber.Api;
 using ClassTranscriber.Api.Contracts;
 using ClassTranscriber.Api.Domain;
 using ClassTranscriber.Api.Endpoints;
@@ -18,6 +20,7 @@ using Microsoft.AspNetCore.Http.Features;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 
 namespace ClassTranscriber.Api.Tests;
 
@@ -34,7 +37,10 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
     public TestWebApplicationFactory(
         IEnumerable<IRegisteredTranscriptionEngine>? transcriptionEngines = null,
         bool includeFrontendAppShell = false,
-        long? maxRequestBodySizeBytes = null)
+        long? maxRequestBodySizeBytes = null,
+        IReadOnlyDictionary<string, string?>? configuration = null,
+        IPAddress? remoteIpAddressOverride = null,
+        int? localPortOverride = null)
     {
         _transcriptionEngines = transcriptionEngines?.ToArray()
             ?? [
@@ -59,6 +65,8 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
             EnvironmentName = "Testing",
             WebRootPath = _webRootPath,
         });
+        if (configuration is not null)
+            builder.Configuration.AddInMemoryCollection(configuration);
 
         builder.Services.ConfigureHttpJsonOptions(options =>
         {
@@ -115,6 +123,11 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
             o.ModelsPath = Path.Combine(_storageBasePath, "models", "openvino-genai");
         });
         builder.Services.Configure<OpenAiCompatibleOptions>(_ => { });
+        builder.Services.AddMcp(builder.Configuration);
+        builder.Services.Configure<McpOptions>(options =>
+        {
+            options.CursorIntegrityKey = "test-cursor-integrity-key-0123456789abcdef";
+        });
 
         builder.Services.AddSingleton<IMediaInspector, NoOpMediaInspector>();
         builder.Services.AddSingleton<IAudioExtractor, NoOpAudioExtractor>();
@@ -141,8 +154,29 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
             db.Database.EnsureCreated();
         }
 
+        if (remoteIpAddressOverride is not null)
+        {
+            _app.Use(async (context, next) =>
+            {
+                context.Connection.RemoteIpAddress = remoteIpAddressOverride;
+                await next(context);
+            });
+        }
+
+        if (localPortOverride is not null)
+        {
+            _app.Use(async (context, next) =>
+            {
+                context.Connection.LocalPort = localPortOverride.Value;
+                await next(context);
+            });
+        }
+
+        _app.UseMcpPortGuard();
         if (_webRootPath is not null)
             _app.UseFrontendAppShellAssets();
+
+        _app.MapMcp();
 
         _app.MapGet("/api/health", () => Results.Ok(new { status = "healthy" }));
         _app.MapFolderEndpoints();
@@ -198,6 +232,7 @@ public class TestWebApplicationFactory : IDisposable, IAsyncDisposable
               </body>
             </html>
             """);
+        File.WriteAllText(Path.Combine(webRootPath, "test-asset.txt"), "static asset");
         return webRootPath;
     }
 

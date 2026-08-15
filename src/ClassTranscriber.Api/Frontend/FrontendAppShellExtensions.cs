@@ -15,7 +15,9 @@ public static class FrontendAppShellExtensions
         app.MapFallback(async context =>
         {
             if (context.Request.Path.StartsWithSegments("/api", StringComparison.OrdinalIgnoreCase)
-                || context.Request.Path.StartsWithSegments("/swagger", StringComparison.OrdinalIgnoreCase))
+                || context.Request.Path.StartsWithSegments("/swagger", StringComparison.OrdinalIgnoreCase)
+                || context.Request.Path.StartsWithSegments("/mcp", StringComparison.OrdinalIgnoreCase)
+                || context.Request.Path.StartsWithSegments("/.well-known", StringComparison.OrdinalIgnoreCase))
             {
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
                 return;

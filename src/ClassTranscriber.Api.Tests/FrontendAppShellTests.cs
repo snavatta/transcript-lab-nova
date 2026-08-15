@@ -43,6 +43,18 @@ public sealed class FrontendAppShellTests : IAsyncLifetime
         Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
     }
 
+    [Theory]
+    [InlineData("/.well-known/oauth-protected-resource")]
+    [InlineData("/.well-known/oauth-protected-resource/mcp")]
+    [InlineData("/.well-known/oauth-authorization-server")]
+    public async Task UnknownWellKnownRoute_DoesNotFallbackToFrontend(string path)
+    {
+        var response = await _client.GetAsync(path);
+
+        Assert.Equal(System.Net.HttpStatusCode.NotFound, response.StatusCode);
+        Assert.NotEqual("text/html", response.Content.Headers.ContentType?.MediaType);
+    }
+
     public async Task DisposeAsync()
     {
         await _factory.DisposeAsync();

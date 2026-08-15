@@ -4,7 +4,7 @@
     <TargetFramework>net10.0</TargetFramework>
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
-    <NoWarn>MEAI001</NoWarn>
+    <NoWarn>MEAI001;MCP9004</NoWarn>
   </PropertyGroup>
 
   <ItemGroup>
@@ -15,10 +15,12 @@
     </PackageReference>
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" />
     <PackageReference Include="Microsoft.Extensions.AI.Abstractions" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
     <PackageReference Include="org.k2fsa.sherpa.onnx" />
     <PackageReference Include="SharpCompress" />
     <PackageReference Include="Serilog.AspNetCore" />
     <PackageReference Include="Swashbuckle.AspNetCore" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" />
     <PackageReference Include="Whisper.net" />
     <PackageReference Include="Whisper.net.Runtime" />
   </ItemGroup>

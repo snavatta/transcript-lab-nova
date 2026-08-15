@@ -30,6 +30,8 @@ appsettings.Local.json
 # Generated artifacts
 playwright-report/
 test-results/
+__pycache__/
+*.py[cod]
 
 # Data folders (user uploads, transcripts, models, etc.)
 data/
@@ -46,3 +48,6 @@ data/
 *.db-journal
 *.code-workspace
 /package-lock.json
+
+# Local agent state/evidence; never commit to the public repository
+.omo/

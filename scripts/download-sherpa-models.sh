@@ -62,6 +62,11 @@ download_model() {
   "tokens": "${prefix}-tokens.txt",
   "task": "transcribe"
 }
+EOF
+
+  rm -rf "${tmp}"
+  echo "Model '${name}' installed to ${dest}."
+}
 
 download_sense_voice_model() {
   local dest="${SENSE_VOICE_MODELS_BASE}/small"
@@ -99,11 +104,6 @@ EOF
 
   rm -rf "${tmp}"
   echo "SenseVoice model installed to ${dest}."
-}
-EOF
-
-  rm -rf "${tmp}"
-  echo "Model '${name}' installed to ${dest}."
 }
 
 target="${1:-all}"
