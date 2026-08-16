@@ -238,6 +238,19 @@ Readable
 Timestamped
 ```
 
+## DiarizationSource
+```text
+Local
+Provider
+Xai
+```
+
+`Xai` is an additive source value. It is valid only when the selected engine is
+`OpenRouter`, the model is one of the two advertised verified word-timestamp
+models, and direct xAI is configured. `Provider` remains the native-source
+choice for a model advertised in `providerDiarizationModels`; `Local` remains
+valid for supported engines.
+
 ## TranscriptionEngine
 ```text
 SherpaOnnx
@@ -249,6 +262,7 @@ OpenVinoWhisperSidecar
 OnnxWhisper
 OpenAiCompatible
 OpenRouter
+Xai
 ```
 
 Implementation note:
@@ -262,6 +276,8 @@ Implementation note:
 - `OnnxWhisper` is a reserved placeholder for a future native .NET ONNX Whisper engine using `Microsoft.ML.OnnxRuntime`. It is not yet implemented and reports unavailable in all current releases.
 - `OpenAiCompatible` is a generic proxy engine that forwards transcription to any external service that exposes an OpenAI-compatible `/v1/audio/transcriptions` endpoint (e.g., the local `OpenVinoWhisperSidecar`, Whisper.cpp server, Ollama). It is hidden from the engine selector when `BaseUrl` is not configured.
 - `OpenRouter` is a first-class hosted speech-to-text engine using OpenRouter's `/api/v1/audio/transcriptions` endpoint. It is hidden from the engine selector until a server-side API key is configured. Its transcription-capable models are discovered through `/api/v1/models?output_modalities=transcription`, the selected model is stored in each project's existing `model` field, and its remote models are not included in the local Model Manager catalog.
+- `Xai` is the recommended hosted engine for long classes. It is available only with an HTTPS base URL and server-side API key, supports `grok-stt-1.0`, and sends one whole prepared FLAC request to xAI `/v1/stt`. It does not automatically chunk, fall back, or route through OpenRouter. The prepared file must be at most 500 MB.
+- Every hosted-provider upload is prepared as lossless FLAC. For OpenRouter's verified word-timestamp path, recordings use sequential `600`-second core intervals with up to two seconds before and after in each extraction. Every encoded FLAC part must be strictly smaller than `24,000,000` bytes; oversized intervals are recursively bisected and fail with a sanitized error when a 60-second core cannot meet that limit.
 - `WhisperNet`, `WhisperNetCuda`, and `WhisperNetCoreML` use shared ggml model files and support auto-download. `WhisperNetCoreML` also requires the matching CoreML encoder `.mlmodelc` package beside the ggml model.
 - `OpenVinoWhisperSidecar` uses curated pre-exported model directories under `models/openvino-genai/` and supports managed download/redownload/probe from the settings model manager. Download is proxied to the sidecar's own model management API.
 
@@ -367,7 +383,9 @@ Validation:
   "languageCode": null,
   "audioNormalizationEnabled": true,
   "diarizationEnabled": false,
-  "diarizationMode": "Basic"
+  "diarizationMode": "Basic",
+  "diarizationSource": "Local",
+  "speakerRoleAttributionEnabled": false
 }
 ```
 
@@ -379,10 +397,15 @@ Fields:
 - `audioNormalizationEnabled: boolean`
 - `diarizationEnabled: boolean`
 - `diarizationMode: string` — `"Basic"` or `"Improved"`
+- `diarizationSource: string` — `"Local"`, `"Provider"`, or `"Xai"`
+- `speakerRoleAttributionEnabled: boolean`
 
 Rules:
 - if `languageMode` is `Auto`, `languageCode` may be null
 - if `languageMode` is `Fixed`, `languageCode` should be provided
+- `diarizationMode` applies only when `diarizationSource` is `Local`
+- `Provider` is valid only when the selected engine advertises the selected model in `providerDiarizationModels`
+- `Xai` is valid only for `OpenRouter` plus an advertised verified word-timestamp model when direct xAI is configured; it is not a direct-`Xai` source value
 
 ---
 
@@ -424,7 +447,8 @@ Behavior note:
     }
   ],
   "createdAtUtc": "2026-04-01T18:25:43Z",
-  "updatedAtUtc": "2026-04-01T18:25:43Z"
+  "updatedAtUtc": "2026-04-01T18:25:43Z",
+  "hostedProcessing": null
 }
 ```
 
@@ -433,10 +457,51 @@ Fields:
 - `plainText: string`
 - `detectedLanguage: string | null`
 - `durationMs: number | null`
+- `hostedProcessing: HostedProcessingMetadataDto | null` — hosted processing evidence when any hosted STT, hosted diarization, or speaker-role attribution ran
 - `segmentCount: number`
 - `segments: TranscriptSegmentDto[]`
 - `createdAtUtc: string`
 - `updatedAtUtc: string`
+
+### HostedProcessingMetadataDto
+```json
+{
+  "sttProvider": "OpenRouter",
+  "sttModel": "openai/whisper-large-v3",
+  "audioDurationMs": 3600000,
+  "requestCount": 6,
+  "nativeDiarizationUsed": false,
+  "sttCostUsd": 0.123456,
+  "sttRateUsdPerHour": null,
+  "sttCostClassification": "Actual",
+  "diarizationSource": "Xai",
+  "diarizationProvider": "xAI",
+  "diarizationModel": "grok-stt-1.0",
+  "diarizationRequestCount": 1,
+  "diarizationCostUsd": 0.1,
+  "diarizationRateUsdPerHour": 0.1,
+  "diarizationCostClassification": "Estimated",
+  "roleAttributionModel": null,
+  "roleAttributionStatus": null,
+  "roleAttributionPromptTokens": null,
+  "roleAttributionOutputTokens": null,
+  "roleAttributionCostUsd": null,
+  "totalCostUsd": 0.223456,
+  "totalContainsEstimate": true
+}
+```
+
+Costs are persisted as integer micro-USD and exposed as decimal USD. `totalCostUsd` is the checked sum of STT, diarization, and role-attribution costs without double counting native diarization; `totalContainsEstimate` is true when STT or
+diarization classification is `Estimated`. `nativeDiarizationUsed` remains for
+compatibility: direct `Xai` plus `Provider` reuses the native STT request and
+adds no separate diarization cost.
+
+For `OpenRouter` plus `Xai`, OpenRouter retains transcript wording and word
+timing. xAI labels each word by greatest positive temporal overlap, then by the
+nearest xAI interval within one second, otherwise no label; equal candidates use
+the earliest xAI interval. The full OpenRouter pass completes before the one
+whole-FLAC xAI timing request. An explicit xAI diarization failure is fatal, but
+completed OpenRouter checkpoints and their cost evidence remain available.
 
 ---
 
@@ -504,7 +569,9 @@ Fields:
     "languageCode": null,
     "audioNormalizationEnabled": true,
     "diarizationEnabled": false,
-    "diarizationMode": "Basic"
+    "diarizationMode": "Basic",
+    "diarizationSource": "Local",
+    "speakerRoleAttributionEnabled": false
   },
   "mediaUrl": "/api/projects/guid/media",
   "audioPreviewUrl": "/api/projects/guid/audio",
@@ -652,6 +719,8 @@ For MVP, recent completed/failed items are enough.
   "defaultAudioNormalizationEnabled": true,
   "defaultDiarizationEnabled": false,
   "defaultDiarizationMode": "Basic",
+  "defaultDiarizationSource": "Local",
+  "defaultSpeakerRoleAttributionEnabled": false,
   "defaultTranscriptViewMode": "Readable"
 }
 ```
@@ -664,6 +733,8 @@ Fields:
 - `defaultAudioNormalizationEnabled: boolean`
 - `defaultDiarizationEnabled: boolean`
 - `defaultDiarizationMode: string` — `"Basic"` or `"Improved"`
+- `defaultDiarizationSource: string` — `"Local"`, `"Provider"`, or `"Xai"`
+- `defaultSpeakerRoleAttributionEnabled: boolean`
 - `defaultTranscriptViewMode: string`
 
 ### UpdateGlobalSettingsRequest
@@ -673,13 +744,17 @@ Same shape as `GlobalSettingsDto`.
 ```json
 {
   "engine": "WhisperNet",
-  "models": ["tiny", "base", "small", "medium", "large"]
+  "models": ["tiny", "base", "small", "medium", "large"],
+  "providerDiarizationModels": [],
+  "wordTimestampModels": []
 }
 ```
 
 Fields:
 - `engine: string`
 - `models: string[]`
+- `providerDiarizationModels: string[]` — models that support native provider diarization through this exact engine route
+- `wordTimestampModels: string[]` — models eligible for OpenRouter long-form word timing; the verified OpenRouter set is exactly `openai/whisper-large-v3` and `openai/whisper-large-v3-turbo`, while ordinary OpenRouter model discovery remains dynamic
 
 ### TranscriptionOptionsDto
 ```json
@@ -699,6 +774,7 @@ Fields:
 
 Fields:
 - `engines: TranscriptionEngineOptionDto[]`
+- `xaiDiarizationAvailable: boolean` and `xaiDiarizationModel: string` — direct-xAI compatibility information used to offer `DiarizationSource=Xai` only when the full compatibility matrix permits it
 
 ### RuntimeDiagnosticsDto
 ```json
@@ -829,7 +905,7 @@ Conceptual example:
 ```text
 folderId = c0c8f7e8-8730-4ff4-9215-39a71c7df1ae
 autoQueue = true
-settings = {"engine":"WhisperNet","model":"small","languageMode":"Auto","languageCode":null,"audioNormalizationEnabled":true,"diarizationEnabled":false,"diarizationMode":"Basic"}
+settings = {"engine":"WhisperNet","model":"small","languageMode":"Auto","languageCode":null,"audioNormalizationEnabled":true,"diarizationEnabled":false,"diarizationMode":"Basic","diarizationSource":"Local","speakerRoleAttributionEnabled":false}
 files = [file1, file2]
 items = [{"originalFileName":"class01.mp4","projectName":"Biology Class 01"},{"originalFileName":"class02.mp4","projectName":"Biology Class 02"}]
 ```
@@ -1012,7 +1088,9 @@ Optional request body:
     "languageCode": null,
     "audioNormalizationEnabled": true,
     "diarizationEnabled": false,
-    "diarizationMode": "Basic"
+    "diarizationMode": "Basic",
+    "diarizationSource": "Local",
+    "speakerRoleAttributionEnabled": false
   }
 }
 ```
@@ -1149,6 +1227,8 @@ Request:
   "defaultAudioNormalizationEnabled": true,
   "defaultDiarizationEnabled": false,
   "defaultDiarizationMode": "Basic",
+  "defaultDiarizationSource": "Local",
+  "defaultSpeakerRoleAttributionEnabled": false,
   "defaultTranscriptViewMode": "Readable"
 }
 ```
@@ -1162,6 +1242,7 @@ Response:
 
 Behavior:
 - returns the currently supported transcription engines and allowed model names per engine
+- returns `providerDiarizationModels` per engine so clients can offer Provider mode only for supported engine/model pairs; currently direct `Xai` + `grok-stt-1.0` advertises support, while OpenRouter advertises none
 - frontend should use this route instead of hard-coding engine/model lists
 
 ### GET `/api/settings/models`
@@ -1173,6 +1254,34 @@ Behavior:
 - includes filesystem install status and install path per model
 - automatically probes installed models so runtime failures are visible without uploading a file
 - `probeState` may be `Missing`, `Installed`, `Ready`, `Failed`, `Unavailable`, or `Unsupported`
+
+### GET `/api/settings/capabilities`
+Response:
+```json
+{
+  "collectedAtUtc": "2026-08-16T00:00:00.0000000Z",
+  "hostedProviders": [
+    { "provider": "OpenRouter", "configured": false, "reachable": null, "status": "Not configured." },
+    { "provider": "xAI", "configured": false, "reachable": null, "status": "Not configured." }
+  ],
+  "computeBackends": [
+    { "backend": "CPU", "available": true, "devices": [], "status": "Available." }
+  ],
+  "architecture": "X64",
+  "logicalProcessorCount": 8,
+  "osDescription": "Example operating system",
+  "hardwareName": null
+}
+```
+
+The exact top-level response fields are `collectedAtUtc`, `hostedProviders`, `computeBackends`, `architecture`, `logicalProcessorCount`, `osDescription`, and `hardwareName`. Each `hostedProviders[] { provider, configured, reachable, status }` entry and each `computeBackends[] { backend, available, devices[], status }` entry contains sanitized status data. This endpoint must expose sanitized summaries
+only: never keys, configured URLs, filesystem paths, private device identifiers,
+provider response bodies, stack traces, or raw exceptions. It is separate from
+and does not change `/api/diagnostics`.
+
+The Settings client presents `Settings`, `Local Model Manager`, and `System
+Capabilities` as distinct tabs. It fetches the model catalog and capabilities
+only after their tab is first activated; `/api/diagnostics` remains unchanged.
 
 ### POST `/api/settings/models/manage`
 Request:
@@ -1372,6 +1481,8 @@ export interface ProjectSettingsDto {
   audioNormalizationEnabled: boolean;
   diarizationEnabled: boolean;
   diarizationMode: string;
+  diarizationSource: "Local" | "Provider" | "Xai";
+  speakerRoleAttributionEnabled: boolean;
 }
 
 export interface TranscriptSegmentDto {
@@ -1390,6 +1501,56 @@ export interface TranscriptDto {
   segments: TranscriptSegmentDto[];
   createdAtUtc: string;
   updatedAtUtc: string;
+  hostedProcessing: HostedProcessingMetadataDto | null;
+}
+
+export interface HostedProcessingMetadataDto {
+  sttProvider: string;
+  sttModel: string;
+  audioDurationMs: number | null;
+  requestCount: number;
+  nativeDiarizationUsed: boolean;
+  sttCostUsd: number | null;
+  sttRateUsdPerHour: number | null;
+  sttCostClassification: string | null;
+  diarizationSource: string | null;
+  diarizationProvider: string | null;
+  diarizationModel: string | null;
+  diarizationRequestCount: number;
+  diarizationCostUsd: number | null;
+  diarizationRateUsdPerHour: number | null;
+  diarizationCostClassification: string | null;
+  roleAttributionModel: string | null;
+  roleAttributionStatus: string | null;
+  roleAttributionPromptTokens: number | null;
+  roleAttributionOutputTokens: number | null;
+  roleAttributionCostUsd: number | null;
+  totalCostUsd: number | null;
+  totalContainsEstimate: boolean;
+}
+
+export interface SystemCapabilitiesDto {
+  collectedAtUtc: string;
+  hostedProviders: HostedProviderCapabilityDto[];
+  computeBackends: ComputeBackendCapabilityDto[];
+  architecture: string;
+  logicalProcessorCount: number;
+  osDescription: string;
+  hardwareName: string | null;
+}
+
+export interface HostedProviderCapabilityDto {
+  provider: string;
+  configured: boolean;
+  reachable: boolean | null;
+  status: string;
+}
+
+export interface ComputeBackendCapabilityDto {
+  backend: string;
+  available: boolean;
+  devices: string[];
+  status: string;
 }
 
 export interface QueueItemDto extends ProjectSummaryDto {
@@ -1460,6 +1621,8 @@ export interface GlobalSettingsDto {
   defaultAudioNormalizationEnabled: boolean;
   defaultDiarizationEnabled: boolean;
   defaultDiarizationMode: string;
+  defaultDiarizationSource: "Local" | "Provider" | "Xai";
+  defaultSpeakerRoleAttributionEnabled: boolean;
   defaultTranscriptViewMode: TranscriptViewMode;
 }
 

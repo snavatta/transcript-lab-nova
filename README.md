@@ -241,7 +241,21 @@ Configure the key with an environment variable so it is never committed:
 export Transcription__OpenRouter__ApiKey=YOUR_OPENROUTER_API_KEY
 ```
 
-Optional settings can override `Transcription__OpenRouter__BaseUrl`, `FallbackModels`, and `TimeoutSeconds`. `BaseUrl` must be an absolute HTTPS URL. Prepared audio is uploaded to OpenRouter's hosted `/api/v1/audio/transcriptions` endpoint.
+Optional settings can override `Transcription__OpenRouter__BaseUrl`, `FallbackModels`, and `TimeoutSeconds`. `BaseUrl` must be an absolute HTTPS URL. All hosted transcription audio is prepared as lossless FLAC. OpenRouter's ordinary transcription catalog remains dynamic. Its verified long-form word-timestamp path is limited to `openai/whisper-large-v3` and `openai/whisper-large-v3-turbo`: it sends sequential 600-second cores with up to two seconds of extraction overlap, recursively splits an encoded part at or above 24,000,000 bytes, and only sends FLAC parts strictly below that limit. It checkpoints successful chunks, sums actual reported usage cost, retries only 429/503 up to three total attempts honoring `Retry-After`, and treats timeouts as fatal.
+
+#### xAI direct (recommended for long classes)
+
+Configure `Transcription__Xai__ApiKey` to enable the `Xai` engine and `grok-stt-1.0`. TranscriptLab sends one whole prepared FLAC request to xAI `/v1/stt`, preserving native speaker identities across long classes. The FLAC is checked against xAI's 500 MB limit; recordings over the limit fail validation and are never silently chunked or rerouted.
+
+Direct xAI STT cost is displayed as an estimate using the configured hourly-rate snapshot (default `$0.10/hour`). OpenRouter-reported costs are displayed as actual. Optional speaker-role attribution sends timestamped speaker turns, never audio, to `google/gemini-3.7-flash` through OpenRouter and fails open to the original `Speaker N` labels.
+
+When diarization is enabled, choose its source explicitly. `Provider mode` uses xAI's native speaker IDs and is offered only for direct `Xai` with `grok-stt-1.0`; `Local mode` runs TranscriptLab's local diarizer and exposes the `Basic` and `Improved` choices. `xAI timing` is available only for the two verified OpenRouter models when direct xAI is configured: OpenRouter wording stays unchanged, then a whole-FLAC xAI timing request assigns speakers by greatest positive overlap, then nearest interval within one second. An explicit xAI timing failure fails the job rather than falling back.
+
+The Settings page keeps `Settings`, `Local Model Manager`, and `System Capabilities` as separate tabs. Model catalog and capability data load only when their tab is first selected. `/api/diagnostics` remains a separate route. `GET /api/settings/capabilities` returns sanitized provider, compute, and CPU-summary fields only; it never returns credentials, URLs, paths, raw provider responses, stack traces, or raw exceptions.
+
+### Optional paid hosted smoke
+
+Optional paid smoke tests are intentionally skipped when credentials or approved disposable media are unavailable. Skipping that optional class is recorded as skipped, not as a passing full-provider test; deterministic mocked coverage remains required.
 
 Configuration for all WhisperNet engines in `appsettings.json`:
 ```json

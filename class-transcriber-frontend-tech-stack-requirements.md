@@ -1,6 +1,14 @@
 
 # Frontend Tech Stack Requirements
 
+Hosted transcription UI must use the existing Material UI design system. Engine selectors distinguish `xAI (direct)` from `OpenRouter`, remote-processing disclosures are explicit, unavailable speaker-role attribution is disabled with explanatory text, and completed-project metadata labels estimated and actual costs separately. `Xai` is available only when the capability/options contract permits it for the selected OpenRouter verified word-timestamp model.
+
+Project details use one Material UI accordion for processing evidence. It must distinguish the STT engine/model, local pipeline stages, and hosted speaker-role attribution rather than presenting debug timing and hosted usage as unrelated sections.
+
+Diarization UI must expose `Local mode`, `Provider mode`, and the compatible `xAI timing` source. `Provider mode` is shown only when the selected engine/model advertises native provider support; `xAI timing` is shown only for the compatible verified OpenRouter path. The `Basic` and `Improved` controls are local-only and remain hidden in non-local modes.
+
+Settings tab content lazy-loads after first activation: `Settings` is initial and keeps Save/Reset, while `Local Model Manager` and `System Capabilities` fetch only when selected. The separate Diagnostics route remains unchanged. Capability cards consume only the sanitized capabilities contract and must not display keys, URLs, raw errors, paths, or private device identifiers.
+
 ## Project Baseline
 - **Node.js 22 LTS** - Required local and CI runtime
 - **npm** - Standard package manager

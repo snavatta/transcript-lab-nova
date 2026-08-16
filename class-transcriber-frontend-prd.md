@@ -525,6 +525,7 @@ The app must expose a global settings page for future uploads.
 - default language
 - default audio normalization
 - default diarization
+- default diarization source
 - default transcript display mode
 
 ### Settings behavior
@@ -532,9 +533,18 @@ The app must expose a global settings page for future uploads.
 - changing settings does not retroactively modify existing projects
 - upload modal should start from global defaults but allow override per batch
 - batch and retry flows should allow diarization to be enabled or disabled per request
+- when diarization is enabled, settings, upload, and retry flows show an explicit `Local mode` / `Provider mode` / `xAI timing` source selector; `Provider mode` appears only for engine/model pairs advertised in `providerDiarizationModels`
+- show the `Xai` source only for the two verified OpenRouter word-timestamp models when the options contract reports direct xAI compatibility; do not offer it for direct `Xai` or ordinary dynamically discovered OpenRouter models
+- `Basic` and `Improved` are local diarizer choices and must be shown only when `Local mode` is selected
 - engine selectors in settings, upload, retry, diagnostics, and model management should surface runtime-available engines from the backend, including Intel GPU options such as `OpenVinoWhisperSidecar` and native Apple Silicon options such as `WhisperNetCoreML` when those runtimes are installed
 - when `OpenRouter` is available, settings, upload, and retry selectors should show its backend-discovered transcription models and clearly disclose that audio is sent to a remote provider; OpenRouter models must not appear in the local filesystem Model Manager
-- the settings page should also expose a model manager below the defaults form in a vertical stack layout
+- when `Xai` is available, settings, upload, retry, and diagnostics selectors show `xAI (direct)` and identify it as the recommended hosted route for long classes; disclose that the entire audio file is sent directly to xAI
+- speaker-role attribution is an optional disabled-by-default project setting; disclose that timestamped transcript text is sent through OpenRouter to Gemini for an additional charge, and disable the control when attribution is unavailable
+- completed projects expose one collapsible `Processing Details` section instead of separate debug-timing and hosted-processing cards; it groups the STT engine/model, local media and diarization work, and speaker-role attribution, labels each as Local/Hosted/Not used, and preserves duration, request count, timings, attribution status, usage, component costs, estimated/actual labels, and whether the total contains an estimate
+- the settings page uses three always-visible tabs named exactly `Settings`, `Local Model Manager`, and `System Capabilities`; Save and Reset actions are shown only on `Settings`
+- lazy-load both the model catalog and system capabilities after their tab is first activated, then keep visited panels mounted so in-progress state survives tab switches
+- the System Capabilities tab reads `GET /api/settings/capabilities` and presents only its sanitized `collectedAtUtc`, hosted-provider, compute-backend, and CPU-summary fields; it must not infer or reveal credentials, URLs, paths, raw errors, or private device identifiers
+- Diagnostics remains a separate route and is not moved into Settings
 - the model manager should show known engine/model combinations, local install state, install path, and the latest probe result
 - installed models should be probed on page load so runtime problems are visible without queueing an upload
 - the user should be able to `Download`, `Redownload`, and `Probe` from the settings page

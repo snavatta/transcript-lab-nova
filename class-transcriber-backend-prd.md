@@ -107,6 +107,8 @@ Includes:
 - language selection
 - audio normalization enabled/disabled
 - diarization enabled/disabled
+- diarization source (`Local`, `Provider`, or `Xai`)
+- local diarization mode (`Basic` or `Improved`, used only for `Local`)
 
 ### Global settings
 Default settings applied to future uploads unless overridden.
@@ -343,6 +345,7 @@ Current backend extension points may additionally expose:
 - `OnnxWhisper`
 - `OpenAiCompatible`
 - `OpenRouter`
+- `Xai`
 
 Implementation note:
 - `SherpaOnnx` may run on a local .NET runtime path or isolated helper worker as long as it stays behind the transcription engine abstraction.
@@ -351,7 +354,9 @@ Implementation note:
 - `OpenVinoWhisperSidecar` runs through a long-lived Python FastAPI sidecar with an OpenAI-compatible API. The sidecar manages its own model downloads. The C# engine uses `ISpeechToTextClient` (Microsoft.Extensions.AI experimental) internally. It is the recommended OpenVINO engine for deployments with local GPU hardware.
 - `OnnxWhisper` is a reserved placeholder for a future native .NET ONNX Whisper engine. It reports unavailable and must not be used in production.
 - `OpenAiCompatible` proxies transcription to any configured OpenAI-compatible API. It must not appear in the engine selector when `BaseUrl` is not configured.
-- `OpenRouter` sends prepared audio to OpenRouter's hosted speech-to-text endpoint and discovers transcription-capable models dynamically. It must not appear in the engine selector when its server-side API key is not configured, must use the model stored in each project's settings, and must remain outside the local filesystem Model Manager.
+- `OpenRouter` sends prepared audio to OpenRouter's hosted speech-to-text endpoint and discovers transcription-capable models dynamically. It must not appear in the engine selector when its server-side API key is not configured, must use the model stored in each project's settings, and must remain outside the local filesystem Model Manager. OpenRouter ordinary model discovery remains dynamic; only its two advertised verified word-timestamp models use the long-form path.
+- `Xai` sends one whole prepared FLAC request directly to xAI `/v1/stt`, uses native word-level diarization, and is the recommended hosted engine for long classes. It preflights the 500 MB limit, never chunks, and never silently changes providers. Direct xAI cost is estimated from duration and a persisted configured-rate snapshot.
+- Optional speaker-role attribution sends only timestamped speaker turns through OpenRouter to Gemini. It must fail open, enforce at most one professor at confidence 0.80 or greater, and persist sanitized status, usage, and actual cost metadata.
 
 ## Suggested model values for MVP
 - `tiny`
@@ -472,6 +477,15 @@ If the uploaded file is video:
 If audio normalization is enabled:
 - normalize/prepare the audio before transcription
 
+The backend uses lossless FLAC for every hosted-provider upload;
+the local-processing WAV path remains unchanged. Direct xAI sends the whole FLAC
+or fails the 500 MB preflight. OpenRouter verified word-timestamp processing uses
+sequential 600-second cores with up to two seconds of extraction overlap on both
+sides, retains only midpoint-owned words, and recursively splits an encoded FLAC
+part at or above 24,000,000 bytes until every part is strictly smaller than
+24,000,000 bytes. A 60-second core that still exceeds the limit fails with a
+sanitized error.
+
 ## 12.2 Media processing integration
 Use an external media tool such as FFmpeg, wrapped behind an abstraction.
 
@@ -519,11 +533,23 @@ Required output:
 ## 13.4 Diarization behavior
 For MVP:
 - backend must accept diarization on/off in settings
-- when diarization is enabled, the backend should attempt to assign speaker labels to transcript segments using local processing
+- when diarization source is `Local`, the backend assigns speaker labels using the selected local `Basic` or `Improved` post-processing mode
+- when diarization source is `Provider`, the transcription engine must use native provider speaker metadata and must not run the local diarizer as a fallback
+- `Provider` is accepted only when the selected engine/model advertises native support; direct `Xai` with `grok-stt-1.0` currently supports it, while OpenRouter does not advertise provider diarization
+- `Xai` is accepted only for OpenRouter plus `openai/whisper-large-v3` or `openai/whisper-large-v3-turbo` when direct xAI is configured. The backend runs OpenRouter first, then exactly one whole-FLAC xAI timing request. It preserves OpenRouter wording and assigns speakers by greatest positive temporal overlap, then nearest xAI interval within one second, otherwise no label; ties use the earliest xAI interval.
+- xAI timing merge is fatal when explicitly selected: it has no Local or Provider fallback. Each successful OpenRouter chunk is checkpointed with its actual cost evidence.
 - if diarization cannot confidently separate speakers, returning a single consistent speaker label is acceptable
 - the code structure should keep diarization as an optional post-processing concern behind the transcription pipeline
 
 Do not over-engineer diarization in MVP.
+
+## 13.5 Hosted metadata and migration compatibility
+- Persist hosted STT, hosted diarization, and optional role-attribution metadata as
+  integer micro-USD values, then expose decimal USD and a checked total without
+  double counting native xAI diarization.
+- Additive migrations preserve existing `Engine=Xai, DiarizationSource=Provider` rows.
+- Existing `nativeDiarizationUsed` data remains compatible. Do not rewrite it to
+  the new `Xai` source.
 
 ---
 
@@ -779,6 +805,15 @@ Returns global defaults.
 
 ### PUT `/api/settings`
 Updates global defaults.
+
+### GET `/api/settings/capabilities`
+Returns a sanitized snapshot with `collectedAtUtc`, hosted providers
+(`provider`, `configured`, `reachable`, `status`), compute backends (`backend`,
+`available`, `devices`, `status`), and CPU summary (`architecture`,
+`logicalProcessorCount`, `osDescription`, `hardwareName`). It must never return
+credentials, configured URLs, filesystem paths, private device identifiers,
+provider bodies, stack traces, or raw exceptions. This route is additive and
+does not change `/api/diagnostics`.
 
 ### GET `/api/settings/models`
 Returns the model-management catalog for known engines/models, including filesystem install state, install path, and active probe results for installed models.
