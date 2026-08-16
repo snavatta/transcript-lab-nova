@@ -19,11 +19,18 @@ import {
 import { useSWRConfig } from 'swr';
 import { ApiError, projectsApi } from '../../api';
 import { useProject, useTranscriptionOptions } from '../../hooks/useData';
-import type { LanguageMode, ProjectDetailDto, ProjectSettingsDto } from '../../types';
+import type { LanguageMode, ProjectDetailDto, ProjectSettingsDto, TranscriptionEngineOptionDto, TranscriptionOptionsDto } from '../../types';
 import { formatEngineLabel } from '../../utils/transcription';
 import { coerceFixedLanguageCodeForEngine, getLanguageOptionsForEngine } from '../../utils/languages';
 import { useNotification } from '../notifications';
-import { DIARIZATION_MODES } from '../../config/diarizationOptions';
+import {
+  DIARIZATION_MODES,
+  coerceDiarizationSource,
+  getDefaultDiarizationSource,
+  supportsProviderDiarization,
+  supportsXaiDiarization,
+  XAI_DIARIZATION_DISCLOSURE,
+} from '../../config/diarizationOptions';
 
 interface Props {
   open: boolean;
@@ -38,7 +45,8 @@ function normalizeLanguageMode(languageMode: string): LanguageMode {
 
 function coerceSettings(
   settings: ProjectSettingsDto,
-  engineOptions: Array<{ engine: string; models: string[] }>,
+  engineOptions: TranscriptionEngineOptionDto[],
+  transcriptionOptions: TranscriptionOptionsDto | undefined,
 ): ProjectSettingsDto {
   const fallbackEngine = engineOptions[0]?.engine ?? settings.engine;
   const engine = engineOptions.some((option) => option.engine === settings.engine)
@@ -57,7 +65,14 @@ function coerceSettings(
       : null,
     audioNormalizationEnabled: settings.audioNormalizationEnabled,
     diarizationEnabled: settings.diarizationEnabled,
+    diarizationSource: coerceDiarizationSource(
+      transcriptionOptions,
+      settings.diarizationSource,
+      engine,
+      model,
+    ),
     diarizationMode: settings.diarizationMode ?? 'Basic',
+    speakerRoleAttributionEnabled: settings.speakerRoleAttributionEnabled,
   };
 }
 
@@ -82,7 +97,7 @@ export default function RetryProjectDialog({
     }
 
     return resolvedProject
-      ? [{ engine: resolvedProject.settings.engine, models: [resolvedProject.settings.model] }]
+      ? [{ engine: resolvedProject.settings.engine, models: [resolvedProject.settings.model], providerDiarizationModels: [], wordTimestampModels: [] }]
       : [];
   }, [resolvedProject, transcriptionOptions]);
 
@@ -91,27 +106,37 @@ export default function RetryProjectDialog({
       return;
     }
 
-    setForm(coerceSettings(resolvedProject.settings, engineOptions));
+    setForm(coerceSettings(resolvedProject.settings, engineOptions, transcriptionOptions));
     setError('');
-  }, [open, resolvedProject, engineOptions]);
+  }, [open, resolvedProject, engineOptions, transcriptionOptions]);
 
   const modelOptions = form
     ? (engineOptions.find((option) => option.engine === form.engine)?.models ?? [form.model])
     : [];
   const languageOptions = form ? getLanguageOptionsForEngine(form.engine) : [];
+  const providerDiarizationSupported = form
+    ? supportsProviderDiarization(transcriptionOptions, form.engine, form.model)
+    : false;
+  const xaiDiarizationSupported = form
+    ? supportsXaiDiarization(transcriptionOptions, form.engine, form.model)
+    : false;
 
   const handleEngineChange = (engine: string) => {
     const models = engineOptions.find((option) => option.engine === engine)?.models ?? [];
 
     setForm((current) => current
-      ? {
+      ? (() => {
+        const model = models.includes(current.model) ? current.model : (models[0] ?? current.model);
+        return {
           ...current,
           engine,
-          model: models.includes(current.model) ? current.model : (models[0] ?? current.model),
+          model,
+          diarizationSource: getDefaultDiarizationSource(transcriptionOptions, engine, model),
           languageCode: current.languageMode === 'Fixed'
             ? coerceFixedLanguageCodeForEngine(engine, current.languageCode)
             : null,
-        }
+        };
+      })()
       : current);
     setError('');
   };
@@ -176,8 +201,9 @@ export default function RetryProjectDialog({
         ) : (
           <Box sx={{ display: 'flex', flexDirection: 'column', gap: 2.5, mt: 2 }}>
             <FormControl fullWidth>
-              <InputLabel>Engine</InputLabel>
+              <InputLabel id="retry-engine-label">Engine</InputLabel>
               <Select
+                labelId="retry-engine-label"
                 value={form.engine}
                 label="Engine"
                 onChange={(e) => handleEngineChange(e.target.value)}
@@ -190,13 +216,30 @@ export default function RetryProjectDialog({
               </Select>
             </FormControl>
 
+            {form.engine === 'Xai' && (
+              <Alert severity="info">The entire prepared audio file is sent directly to xAI. Direct xAI is recommended for long classes.</Alert>
+            )}
+            {form.engine === 'OpenRouter' && (
+              <Alert severity="info">Audio is sent through OpenRouter to the selected transcription provider.</Alert>
+            )}
+
             <FormControl fullWidth>
-              <InputLabel>Model</InputLabel>
+              <InputLabel id="retry-model-label">Model</InputLabel>
               <Select
+                labelId="retry-model-label"
                 value={form.model}
                 label="Model"
                 onChange={(e) => {
-                  setForm({ ...form, model: e.target.value });
+                  const model = e.target.value;
+                  setForm({
+                    ...form,
+                    model,
+                    diarizationSource: getDefaultDiarizationSource(
+                      transcriptionOptions,
+                      form.engine,
+                      model,
+                    ),
+                  });
                   setError('');
                 }}
               >
@@ -207,8 +250,9 @@ export default function RetryProjectDialog({
             </FormControl>
 
             <FormControl fullWidth>
-              <InputLabel>Language Mode</InputLabel>
+              <InputLabel id="retry-language-mode-label">Language Mode</InputLabel>
               <Select
+                labelId="retry-language-mode-label"
                 value={form.languageMode}
                 label="Language Mode"
                 onChange={(e) => handleLanguageModeChange(e.target.value as LanguageMode)}
@@ -220,8 +264,9 @@ export default function RetryProjectDialog({
 
             {form.languageMode === 'Fixed' && (
               <FormControl fullWidth>
-                <InputLabel>Fixed Language</InputLabel>
+                <InputLabel id="retry-fixed-language-label">Fixed Language</InputLabel>
                 <Select
+                  labelId="retry-fixed-language-label"
                   value={coerceFixedLanguageCodeForEngine(form.engine, form.languageCode)}
                   label="Fixed Language"
                   onChange={(e) => {
@@ -258,7 +303,11 @@ export default function RetryProjectDialog({
                 <Switch
                   checked={form.diarizationEnabled}
                   onChange={(e) => {
-                    setForm({ ...form, diarizationEnabled: e.target.checked });
+                    setForm({
+                      ...form,
+                      diarizationEnabled: e.target.checked,
+                      speakerRoleAttributionEnabled: e.target.checked ? form.speakerRoleAttributionEnabled : false,
+                    });
                     setError('');
                   }}
                 />
@@ -268,10 +317,43 @@ export default function RetryProjectDialog({
 
             {form.diarizationEnabled && (
               <FormControl size="small" sx={{ minWidth: 200 }}>
-                <InputLabel id="diarization-mode-label">Diarization Mode</InputLabel>
+                <InputLabel id="retry-diarization-source-label">Diarization Source</InputLabel>
                 <Select
-                  labelId="diarization-mode-label"
-                  label="Diarization Mode"
+                  labelId="retry-diarization-source-label"
+                  label="Diarization Source"
+                  value={form.diarizationSource}
+                  onChange={(e) => setForm({
+                    ...form,
+                    diarizationSource: e.target.value === 'Provider' || e.target.value === 'Xai'
+                      ? e.target.value
+                      : 'Local',
+                  })}
+                >
+                  <MenuItem value="Local">Local mode</MenuItem>
+                  {providerDiarizationSupported && <MenuItem value="Provider">Provider mode</MenuItem>}
+                  {xaiDiarizationSupported && <MenuItem value="Xai">xAI mode</MenuItem>}
+                </Select>
+              </FormControl>
+            )}
+
+            {form.diarizationEnabled && form.diarizationSource === 'Provider' && (
+              <Typography variant="caption" color="text.secondary">
+                Speaker detection is performed by {formatEngineLabel(form.engine)}. Local Basic/Improved processing is skipped.
+              </Typography>
+            )}
+
+            {form.diarizationEnabled && form.diarizationSource === 'Xai' && (
+              <Typography variant="caption" color="text.secondary">
+                {XAI_DIARIZATION_DISCLOSURE}
+              </Typography>
+            )}
+
+            {form.diarizationEnabled && form.diarizationSource === 'Local' && (
+              <FormControl size="small" sx={{ minWidth: 200 }}>
+                <InputLabel id="retry-diarization-mode-label">Local Diarization Mode</InputLabel>
+                <Select
+                  labelId="retry-diarization-mode-label"
+                  label="Local Diarization Mode"
                   value={form.diarizationMode}
                   onChange={(e) => setForm({ ...form, diarizationMode: e.target.value })}
                 >
@@ -282,6 +364,30 @@ export default function RetryProjectDialog({
                   ))}
                 </Select>
               </FormControl>
+            )}
+
+            <FormControlLabel
+              control={(
+                <Switch
+                  checked={form.speakerRoleAttributionEnabled}
+                  disabled={!form.diarizationEnabled || !transcriptionOptions?.speakerRoleAttributionAvailable}
+                  onChange={(e) => setForm({ ...form, speakerRoleAttributionEnabled: e.target.checked })}
+                  inputProps={{ 'aria-describedby': 'retry-role-help' }}
+                />
+              )}
+              label="Identify professor and students"
+            />
+            <Typography id="retry-role-help" variant="caption" color="text.secondary">
+              {!form.diarizationEnabled
+                ? 'Enable Speaker Diarization first.'
+                : !transcriptionOptions?.speakerRoleAttributionAvailable
+                  ? 'Configure an OpenRouter API key on the server to enable role attribution.'
+                  : 'Uses timestamped speaker turns only; audio is not sent for role attribution.'}
+            </Typography>
+            {form.speakerRoleAttributionEnabled && (
+              <Alert severity="warning">
+                Timestamped transcript text is sent through OpenRouter to {transcriptionOptions?.speakerRoleAttributionModel} and incurs an additional charge. Audio is not sent for this step.
+              </Alert>
             )}
           </Box>
         )}

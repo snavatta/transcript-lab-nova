@@ -16,6 +16,8 @@ export function formatEngineLabel(engine: string): string {
       return 'OpenAI-Compatible API';
     case 'OpenRouter':
       return 'OpenRouter';
+    case 'Xai':
+      return 'xAI (direct)';
     default:
       return engine;
   }

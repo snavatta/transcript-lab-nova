@@ -13,6 +13,8 @@ export type LanguageMode = "Auto" | "Fixed";
 
 export type TranscriptViewMode = "Readable" | "Timestamped";
 
+export type DiarizationSource = "Local" | "Provider" | "Xai";
+
 export interface FolderSummaryDto {
   id: string;
   name: string;
@@ -54,7 +56,9 @@ export interface ProjectSettingsDto {
   languageCode: string | null;
   audioNormalizationEnabled: boolean;
   diarizationEnabled: boolean;
+  diarizationSource: DiarizationSource;
   diarizationMode: string;
+  speakerRoleAttributionEnabled: boolean;
 }
 
 export interface UpdateProjectRequest {
@@ -93,6 +97,32 @@ export interface TranscriptDto {
   segments: TranscriptSegmentDto[];
   createdAtUtc: string;
   updatedAtUtc: string;
+  hostedProcessing: HostedProcessingMetadataDto | null;
+}
+
+export interface HostedProcessingMetadataDto {
+  sttProvider: string;
+  sttModel: string;
+  audioDurationMs: number | null;
+  requestCount: number;
+  nativeDiarizationUsed: boolean;
+  sttCostUsd: number | null;
+  sttRateUsdPerHour: number | null;
+  sttCostClassification: string | null;
+  diarizationSource?: string | null;
+  diarizationProvider?: string | null;
+  diarizationModel?: string | null;
+  diarizationRequestCount?: number;
+  diarizationCostUsd?: number | null;
+  diarizationRateUsdPerHour?: number | null;
+  diarizationCostClassification?: string | null;
+  roleAttributionModel: string | null;
+  roleAttributionStatus: string | null;
+  roleAttributionPromptTokens: number | null;
+  roleAttributionOutputTokens: number | null;
+  roleAttributionCostUsd: number | null;
+  totalCostUsd: number | null;
+  totalContainsEstimate: boolean;
 }
 
 export interface ProjectSummaryDto {
@@ -146,17 +176,27 @@ export interface GlobalSettingsDto {
   defaultLanguageCode: string | null;
   defaultAudioNormalizationEnabled: boolean;
   defaultDiarizationEnabled: boolean;
+  defaultDiarizationSource: DiarizationSource;
   defaultDiarizationMode: string;
+  defaultSpeakerRoleAttributionEnabled: boolean;
   defaultTranscriptViewMode: TranscriptViewMode;
 }
 
 export interface TranscriptionEngineOptionDto {
   engine: string;
   models: string[];
+  providerDiarizationModels: string[];
+  wordTimestampModels: string[];
 }
 
 export interface TranscriptionOptionsDto {
   engines: TranscriptionEngineOptionDto[];
+  speakerRoleAttributionAvailable: boolean;
+  speakerRoleAttributionModel: string;
+  recommendedHostedEngine: string | null;
+  recommendedHostedModel: string | null;
+  xaiDiarizationAvailable: boolean;
+  xaiDiarizationModel: string;
 }
 
 export interface TranscriptionModelEntryDto {
@@ -173,6 +213,30 @@ export interface TranscriptionModelEntryDto {
 
 export interface TranscriptionModelCatalogDto {
   models: TranscriptionModelEntryDto[];
+}
+
+export interface HostedProviderCapabilityDto {
+  provider: string;
+  configured: boolean;
+  reachable: boolean | null;
+  status: string;
+}
+
+export interface ComputeBackendCapabilityDto {
+  backend: string;
+  available: boolean;
+  devices: string[];
+  status: string;
+}
+
+export interface SystemCapabilitiesDto {
+  collectedAtUtc: string;
+  hostedProviders: HostedProviderCapabilityDto[];
+  computeBackends: ComputeBackendCapabilityDto[];
+  architecture: string;
+  logicalProcessorCount: number;
+  osDescription: string;
+  hardwareName: string | null;
 }
 
 export interface ManageTranscriptionModelRequest {
@@ -224,7 +288,9 @@ export interface UpdateGlobalSettingsRequest {
   defaultLanguageCode: string | null;
   defaultAudioNormalizationEnabled: boolean;
   defaultDiarizationEnabled: boolean;
+  defaultDiarizationSource: DiarizationSource;
   defaultDiarizationMode: string;
+  defaultSpeakerRoleAttributionEnabled: boolean;
   defaultTranscriptViewMode: TranscriptViewMode;
 }
 

@@ -76,6 +76,18 @@ export function useTranscriptionModels() {
   return useSWR('settings/models', () => settingsApi.getModels());
 }
 
+export function useSystemCapabilities(enabled: boolean) {
+  return useSWR(
+    enabled ? 'settings/capabilities' : null,
+    () => settingsApi.getCapabilities(),
+    {
+      revalidateOnFocus: false,
+      revalidateOnReconnect: false,
+      revalidateIfStale: false,
+    },
+  );
+}
+
 export function useDiagnostics() {
   return useSWR('diagnostics', () => diagnosticsApi.get(), { refreshInterval: 5000 });
 }

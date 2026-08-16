@@ -1,11 +1,10 @@
 import { useState, useCallback, useEffect } from 'react';
 import {
-  Box, Stack, Typography, Button, Chip, LinearProgress, Paper, Skeleton, Accordion, AccordionSummary, AccordionDetails, ToggleButtonGroup, ToggleButton,
+  Box, Stack, Typography, Button, Chip, LinearProgress, Paper, Skeleton, ToggleButtonGroup, ToggleButton,
 } from '@mui/material';
 import ReplayIcon from '@mui/icons-material/Replay';
 import CancelIcon from '@mui/icons-material/Cancel';
 import PlayArrowIcon from '@mui/icons-material/PlayArrow';
-import ExpandMoreIcon from '@mui/icons-material/ExpandMore';
 import EditIcon from '@mui/icons-material/Edit';
 import MovieIcon from '@mui/icons-material/Movie';
 import GraphicEqIcon from '@mui/icons-material/GraphicEq';
@@ -27,17 +26,7 @@ import { formatDate, formatDuration } from '../utils/format';
 import { formatEngineLabel } from '../utils/transcription';
 import { getLanguageLabel } from '../utils/languages';
 import { useIsMobile } from '../hooks/useIsMobile';
-
-function formatDebugDuration(ms: number | null | undefined): string {
-  if (ms == null) return '—';
-  if (ms < 1000) return `${ms} ms`;
-  return `${(ms / 1000).toFixed(2)} s`;
-}
-
-function formatRealtimeFactor(value: number | null | undefined): string {
-  if (value == null) return '—';
-  return `${value.toFixed(2)}x`;
-}
+import HostedProcessingSummary from '../components/projects/HostedProcessingSummary';
 
 export default function ProjectDetailPage() {
   const isMobile = useIsMobile();
@@ -193,27 +182,15 @@ export default function ProjectDetailPage() {
         </Typography>
       </Paper>
 
-      {project.debugTimings && (
-        <Accordion variant="outlined" disableGutters sx={{ mb: 2 }}>
-          <AccordionSummary expandIcon={<ExpandMoreIcon />}>
-            <Typography variant="overline" color="text.secondary">
-              Debug Timing
-            </Typography>
-          </AccordionSummary>
-          <AccordionDetails sx={{ pt: 0 }}>
-            <Box sx={{ display: 'flex', flexWrap: 'wrap', gap: 1 }}>
-              <Chip size="small" variant="outlined" label={`Total: ${formatDebugDuration(project.debugTimings.totalElapsedMs)}`} />
-              <Chip size="small" variant="outlined" label={`Prep: ${formatDebugDuration(project.debugTimings.preparationElapsedMs)}`} />
-              <Chip size="small" variant="outlined" label={`Inspect: ${formatDebugDuration(project.debugTimings.inspectElapsedMs)}`} />
-              <Chip size="small" variant="outlined" label={`Extract: ${formatDebugDuration(project.debugTimings.extractElapsedMs)}`} />
-              <Chip size="small" variant="outlined" label={`Normalize: ${formatDebugDuration(project.debugTimings.normalizeElapsedMs)}`} />
-              <Chip size="small" variant="outlined" label={`Transcribe: ${formatDebugDuration(project.debugTimings.transcriptionElapsedMs)}`} />
-              <Chip size="small" variant="outlined" label={`Persist: ${formatDebugDuration(project.debugTimings.persistElapsedMs)}`} />
-              <Chip size="small" variant="outlined" label={`Transcribe RT: ${formatRealtimeFactor(project.debugTimings.transcriptionRealtimeFactor)}`} />
-              <Chip size="small" variant="outlined" label={`Total RT: ${formatRealtimeFactor(project.debugTimings.totalRealtimeFactor)}`} />
-            </Box>
-          </AccordionDetails>
-        </Accordion>
+      {(project.debugTimings || transcript?.hostedProcessing) && (
+        <Box sx={{ mb: 2 }}>
+          <HostedProcessingSummary
+            metadata={transcript?.hostedProcessing ?? null}
+            debugTimings={project.debugTimings ?? null}
+            settings={project.settings}
+            projectDurationMs={project.durationMs}
+          />
+        </Box>
       )}
 
       {/* Main workspace: stacked media + transcript */}

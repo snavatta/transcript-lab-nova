@@ -1,5 +1,12 @@
 import { Buffer } from 'node:buffer';
-import { expect, test, type Page, type Route } from '@playwright/test';
+import { expect, test, type Locator, type Page, type Route } from '@playwright/test';
+
+const frontendPort = process.env.FRONTEND_PORT;
+if (frontendPort === undefined) {
+  throw new Error('Playwright did not capture the preview server port.');
+}
+
+test.use({ baseURL: `http://127.0.0.1:${frontendPort}` });
 
 interface FolderState {
   id: string;
@@ -15,7 +22,7 @@ interface ProjectState {
   folderId: string;
   name: string;
   originalFileName: string;
-  status: 'Queued' | 'Completed';
+  status: 'Queued' | 'Completed' | 'Failed';
   progress: number | null;
   mediaType: 'Audio' | 'Video';
   durationMs: number | null;
@@ -30,6 +37,9 @@ interface ProjectState {
     languageCode: string | null;
     audioNormalizationEnabled: boolean;
     diarizationEnabled: boolean;
+    diarizationSource: 'Local' | 'Provider' | 'Xai';
+    diarizationMode: string;
+    speakerRoleAttributionEnabled: boolean;
   };
   transcriptAvailable: boolean;
   availableExports: string[];
@@ -48,16 +58,79 @@ interface MockState {
     defaultLanguageCode: string | null;
     defaultAudioNormalizationEnabled: boolean;
     defaultDiarizationEnabled: boolean;
+    defaultDiarizationSource: 'Local' | 'Provider' | 'Xai';
+    defaultDiarizationMode: string;
+    defaultSpeakerRoleAttributionEnabled: boolean;
     defaultTranscriptViewMode: 'Readable' | 'Timestamped';
   };
 }
 
+interface HostedProcessingMock {
+  readonly sttProvider: string;
+  readonly sttModel: string;
+  readonly audioDurationMs: number | null;
+  readonly requestCount: number;
+  readonly nativeDiarizationUsed: boolean;
+  readonly sttCostUsd: number | null;
+  readonly sttRateUsdPerHour: number | null;
+  readonly sttCostClassification: string | null;
+  readonly diarizationSource: string | null;
+  readonly diarizationProvider: string | null;
+  readonly diarizationModel: string | null;
+  readonly diarizationRequestCount: number | null;
+  readonly diarizationCostUsd: number | null;
+  readonly diarizationRateUsdPerHour: number | null;
+  readonly diarizationCostClassification: string | null;
+  readonly roleAttributionModel: string | null;
+  readonly roleAttributionStatus: string | null;
+  readonly roleAttributionPromptTokens: number | null;
+  readonly roleAttributionOutputTokens: number | null;
+  readonly roleAttributionCostUsd: number | null;
+  readonly totalCostUsd: number | null;
+  readonly totalContainsEstimate: boolean;
+}
+
+interface InstallMockApiOptions {
+  readonly seedCompletedProject?: boolean;
+  readonly seedFailedProject?: boolean;
+  readonly hostedProcessing?: HostedProcessingMock | null;
+  readonly transcriptionOptions?: unknown;
+  readonly capabilities?: unknown;
+  readonly capabilitiesStatus?: number;
+}
+
 const NOW = '2026-04-02T12:00:00Z';
+const OPENROUTER_DISCLOSURE = "Uses OpenRouter's hosted speech-to-text API. Requires an OpenRouter API key configured on the server. Audio is sent to the selected remote transcription provider.";
 const MOBILE_VIEWPORTS = [
   { label: 'iphone-15', width: 393, height: 852 },
   { label: 'large-iphone', width: 430, height: 932 },
   { label: 'compact-android', width: 360, height: 800 },
 ];
+
+const DIRECT_NATIVE_HOSTED_PROCESSING: HostedProcessingMock = {
+  sttProvider: 'xAI',
+  sttModel: 'grok-stt-1.0',
+  audioDurationMs: 3_600_000,
+  requestCount: 1,
+  nativeDiarizationUsed: true,
+  sttCostUsd: 0.1,
+  sttRateUsdPerHour: 0.1,
+  sttCostClassification: 'Estimated',
+  diarizationSource: 'Provider',
+  diarizationProvider: 'xAI',
+  diarizationModel: 'grok-stt-1.0',
+  diarizationRequestCount: 1,
+  diarizationCostUsd: null,
+  diarizationRateUsdPerHour: null,
+  diarizationCostClassification: null,
+  roleAttributionModel: 'google/gemini-3.7-flash',
+  roleAttributionStatus: 'Completed',
+  roleAttributionPromptTokens: 1200,
+  roleAttributionOutputTokens: 80,
+  roleAttributionCostUsd: 0.002,
+  totalCostUsd: 0.102,
+  totalContainsEstimate: true,
+};
 
 function json(route: Route, body: unknown, status = 200) {
   return route.fulfill({
@@ -67,7 +140,7 @@ function json(route: Route, body: unknown, status = 200) {
   });
 }
 
-function createMockState(seedCompletedProject = false): MockState {
+function createMockState(seedCompletedProject = false, seedFailedProject = false): MockState {
   const state: MockState = {
     folders: [],
     projects: [],
@@ -78,11 +151,14 @@ function createMockState(seedCompletedProject = false): MockState {
       defaultLanguageCode: null,
       defaultAudioNormalizationEnabled: true,
       defaultDiarizationEnabled: false,
+      defaultDiarizationSource: 'Local',
+      defaultDiarizationMode: 'Basic',
+      defaultSpeakerRoleAttributionEnabled: false,
       defaultTranscriptViewMode: 'Timestamped',
     },
   };
 
-  if (seedCompletedProject) {
+  if (seedCompletedProject || seedFailedProject) {
     const folder: FolderState = {
       id: 'folder-1',
       name: 'Biology',
@@ -111,6 +187,9 @@ function createMockState(seedCompletedProject = false): MockState {
         languageCode: state.settings.defaultLanguageCode,
         audioNormalizationEnabled: state.settings.defaultAudioNormalizationEnabled,
         diarizationEnabled: state.settings.defaultDiarizationEnabled,
+        diarizationSource: state.settings.defaultDiarizationSource,
+        diarizationMode: state.settings.defaultDiarizationMode,
+        speakerRoleAttributionEnabled: state.settings.defaultSpeakerRoleAttributionEnabled,
       },
       transcriptAvailable: true,
       availableExports: ['txt', 'md', 'html', 'pdf'],
@@ -119,7 +198,14 @@ function createMockState(seedCompletedProject = false): MockState {
       detailRequests: 2,
     };
 
-    completeProject(project);
+    if (seedFailedProject) {
+      project.status = 'Failed';
+      project.progress = null;
+      project.transcriptAvailable = false;
+      project.availableExports = [];
+    } else {
+      completeProject(project);
+    }
     state.folders.push(folder);
     state.projects.push(project);
   }
@@ -184,6 +270,17 @@ function toProjectDetail(state: MockState, project: ProjectState) {
     availableExports: project.availableExports,
     originalFileSizeBytes: project.originalFileSizeBytes,
     workspaceSizeBytes: project.workspaceSizeBytes,
+    debugTimings: project.status === 'Completed' ? {
+      totalElapsedMs: 528_250,
+      preparationElapsedMs: 6_250,
+      inspectElapsedMs: 300,
+      extractElapsedMs: 4_100,
+      normalizeElapsedMs: 1_850,
+      transcriptionElapsedMs: 510_000,
+      persistElapsedMs: 5_750,
+      transcriptionRealtimeFactor: 0.14,
+      totalRealtimeFactor: 0.15,
+    } : null,
   };
 }
 
@@ -200,10 +297,28 @@ function completeProject(project: ProjectState) {
   project.workspaceSizeBytes = 27_345_678;
 }
 
-async function installMockApi(page: Page, options?: { seedCompletedProject?: boolean }) {
-  const state = createMockState(options?.seedCompletedProject);
+async function installMockApi(page: Page, options?: InstallMockApiOptions) {
+  const state = createMockState(options?.seedCompletedProject, options?.seedFailedProject);
+  const hostedProcessing = options?.hostedProcessing === undefined
+    ? DIRECT_NATIVE_HOSTED_PROCESSING
+    : options.hostedProcessing;
+  const transcriptionOptions = options?.transcriptionOptions ?? {
+    engines: [
+      { engine: 'WhisperNet', models: ['tiny', 'base', 'small'], providerDiarizationModels: [], wordTimestampModels: [] },
+      { engine: 'WhisperNetCuda', models: ['small'], providerDiarizationModels: [], wordTimestampModels: [] },
+      { engine: 'OpenVinoGenAi', models: ['base-int8', 'small-fp16', 'tiny-int8'], providerDiarizationModels: [], wordTimestampModels: [] },
+      { engine: 'OpenRouter', models: ['openai/whisper-large-v3', 'deepgram/nova-3'], providerDiarizationModels: [], wordTimestampModels: ['openai/whisper-large-v3'] },
+      { engine: 'Xai', models: ['grok-stt-1.0'], providerDiarizationModels: ['grok-stt-1.0'], wordTimestampModels: ['grok-stt-1.0'] },
+    ],
+    speakerRoleAttributionAvailable: true,
+    speakerRoleAttributionModel: 'google/gemini-3.7-flash',
+    recommendedHostedEngine: 'Xai',
+    recommendedHostedModel: 'grok-stt-1.0',
+    xaiDiarizationAvailable: true,
+    xaiDiarizationModel: 'grok-stt-1.0',
+  };
 
-  await page.route('http://127.0.0.1:4173/api/**', async (route) => {
+  await page.route('**/api/**', async (route) => {
     const url = new URL(route.request().url());
     const method = route.request().method();
     const { pathname, searchParams } = url;
@@ -219,14 +334,27 @@ async function installMockApi(page: Page, options?: { seedCompletedProject?: boo
     }
 
     if (pathname === '/api/settings/options' && method === 'GET') {
-      return json(route, {
-        engines: [
-          { engine: 'WhisperNet', models: ['tiny', 'base', 'small'] },
-          { engine: 'WhisperNetCuda', models: ['small'] },
-          { engine: 'OpenVinoGenAi', models: ['base-int8', 'small-fp16', 'tiny-int8'] },
-          { engine: 'OpenRouter', models: ['openai/whisper-large-v3'] },
+      return json(route, transcriptionOptions);
+    }
+
+    if (pathname === '/api/settings/capabilities' && method === 'GET') {
+      return json(route, options?.capabilities ?? {
+        collectedAtUtc: NOW,
+        hostedProviders: [
+          { provider: 'OpenRouter', configured: true, reachable: true, status: 'Reachable.' },
+          { provider: 'xAI', configured: true, reachable: false, status: 'Configured but unreachable.' },
         ],
-      });
+        computeBackends: [
+          { backend: 'CPU', available: true, devices: ['CPU device'], status: 'Available.' },
+          { backend: 'CUDA', available: false, devices: [], status: 'Unavailable.' },
+          { backend: 'CoreML', available: false, devices: [], status: 'Unavailable.' },
+          { backend: 'OpenVINO', available: true, devices: ['OpenVINO device'], status: 'Available.' },
+        ],
+        architecture: 'X64',
+        logicalProcessorCount: 16,
+        osDescription: 'Test OS',
+        hardwareName: 'Test CPU',
+      }, options?.capabilitiesStatus);
     }
 
     if (pathname === '/api/settings/models' && method === 'GET') {
@@ -393,6 +521,9 @@ async function installMockApi(page: Page, options?: { seedCompletedProject?: boo
           languageCode: state.settings.defaultLanguageCode,
           audioNormalizationEnabled: state.settings.defaultAudioNormalizationEnabled,
           diarizationEnabled: state.settings.defaultDiarizationEnabled,
+          diarizationSource: state.settings.defaultDiarizationSource,
+          diarizationMode: state.settings.defaultDiarizationMode,
+          speakerRoleAttributionEnabled: state.settings.defaultSpeakerRoleAttributionEnabled,
         },
         transcriptAvailable: false,
         availableExports: [],
@@ -456,6 +587,7 @@ async function installMockApi(page: Page, options?: { seedCompletedProject?: boo
         ],
         createdAtUtc: NOW,
         updatedAtUtc: NOW,
+        hostedProcessing,
       });
     }
 
@@ -537,6 +669,20 @@ async function assertNoHorizontalOverflow(page: Page) {
   expect(dimensions.body).toBeLessThanOrEqual(dimensions.viewport + 1);
 }
 
+async function expectTabToBeFullyVisible(tab: Locator) {
+  const isFullyVisible = await tab.evaluate((element) => {
+    const tabList = element.closest('[role="tablist"]');
+    const scroller = tabList?.parentElement;
+    if (!scroller) return false;
+
+    const tabBounds = element.getBoundingClientRect();
+    const scrollerBounds = scroller.getBoundingClientRect();
+    return tabBounds.left >= scrollerBounds.left && tabBounds.right <= scrollerBounds.right;
+  });
+
+  expect(isFullyVisible).toBe(true);
+}
+
 test('supports folder creation, upload review, queue monitoring, project polling, and export availability', async ({ page }) => {
   await installMockApi(page);
 
@@ -609,12 +755,17 @@ test('selects OpenRouter defaults without treating remote models as local instal
   await page.getByRole('option', { name: 'OpenRouter' }).click();
 
   await expect(page.getByRole('combobox').nth(1)).toHaveText(/openai\/whisper-large-v3/);
-  await expect(page.getByText(/hosted speech-to-text API/i)).toBeVisible();
-  await expect(page.getByText(/requires an OpenRouter API key configured on the server/i)).toBeVisible();
-  await expect(page.getByText(/audio is sent to the selected remote transcription provider/i)).toBeVisible();
+  await expect(page.getByText(OPENROUTER_DISCLOSURE, { exact: true })).toBeVisible();
   await expect(page.getByRole('table').getByText('OpenRouter', { exact: true })).toHaveCount(0);
 
+  const diarizationSwitch = page.getByRole('switch').nth(1);
+  await diarizationSwitch.click();
+  await expect(page.getByRole('combobox', { name: 'Diarization Source' })).toHaveText(/Local mode/);
+  await expect(page.getByRole('option', { name: 'Provider mode' })).toHaveCount(0);
+  await expect(page.getByRole('combobox', { name: 'Local Diarization Mode' })).toBeVisible();
+
   await page.setViewportSize({ width: 375, height: 812 });
+  await page.getByRole('tab', { name: 'Local Model Manager', exact: true }).click();
   await expect(page.getByText(/swipe horizontally to view model status and actions/i)).toBeVisible();
   const modelManagerScroll = page.getByTestId('model-manager-scroll');
   await expect.poll(() => modelManagerScroll.evaluate((element) => element.scrollWidth > element.clientWidth)).toBe(true);
@@ -629,6 +780,370 @@ test('selects OpenRouter defaults without treating remote models as local instal
     return buttonRect.left >= containerRect.left && buttonRect.right <= containerRect.right;
   });
   expect(probeIsHorizontallyReachable).toBe(true);
+});
+
+test('shows direct xAI disclosure, role attribution, and hosted processing costs', async ({ page }) => {
+  await installMockApi(page, { seedCompletedProject: true });
+
+  await page.goto('/settings');
+  await page.getByRole('combobox').nth(0).click();
+  await page.getByRole('option', { name: 'xAI (direct)' }).click();
+  await expect(page.getByText(/entire prepared audio file is sent directly to xAI/i)).toBeVisible();
+  const roleSwitch = page.getByText('Speaker Role Attribution').locator('..').locator('..').getByRole('switch');
+  await expect(roleSwitch).toBeDisabled();
+  const diarizationSwitch = page.getByRole('switch').nth(1);
+  await diarizationSwitch.click();
+  const sourceSelect = page.getByRole('combobox', { name: 'Diarization Source' });
+  await expect(sourceSelect).toHaveText(/Provider mode/);
+  await expect(page.getByRole('combobox', { name: 'Local Diarization Mode' })).toHaveCount(0);
+  await sourceSelect.click();
+  await page.getByRole('option', { name: 'Local mode' }).click();
+  await expect(page.getByRole('combobox', { name: 'Local Diarization Mode' })).toHaveText(/Basic/);
+
+  await page.goto('/projects/project-1');
+  await expect(page.getByText('Processing Details')).toBeVisible();
+  await page.getByText('Processing Details').click();
+  await expect(page.getByText('STT model / engine')).toBeVisible();
+  await expect(page.getByText('Local processing')).toBeVisible();
+  await expect(page.getByText('Speaker-role attribution')).toBeVisible();
+  await expect(page.getByText(/Total \(includes estimate\): \$0\.1020/)).toBeVisible();
+  await expect(page.getByText(/Role cost: \$0\.0020 \(Actual\)/)).toBeVisible();
+});
+
+test('hybrid processing details show actual and estimated costs', async ({ page }, testInfo) => {
+  await installMockApi(page, {
+    seedCompletedProject: true,
+    capabilities: {
+      collectedAtUtc: NOW,
+      hostedProviders: [
+        { provider: 'OpenRouter', configured: true, reachable: true, status: 'Reachable.' },
+        { provider: 'xAI', configured: true, reachable: false, status: 'Configured but unreachable.' },
+      ],
+      computeBackends: [
+        { backend: 'CPU', available: true, devices: ['CPU device'], status: 'Available.' },
+        { backend: 'OpenVINO', available: true, devices: ['OpenVINO device'], status: 'Available.' },
+      ],
+      architecture: 'X64',
+      logicalProcessorCount: 16,
+      osDescription: 'Test OS',
+      hardwareName: 'Test CPU',
+      apiKey: 'SENSITIVE_CAPABILITY_SENTINEL',
+      baseUrl: 'https://private.example.test/SENSITIVE_CAPABILITY_SENTINEL',
+      deviceId: 'SENSITIVE_CAPABILITY_SENTINEL',
+    },
+    hostedProcessing: {
+      sttProvider: 'OpenRouter',
+      sttModel: 'openai/whisper-large-v3',
+      audioDurationMs: 3_600_000,
+      requestCount: 3,
+      nativeDiarizationUsed: false,
+      sttCostUsd: 0.07,
+      sttRateUsdPerHour: 0.07,
+      sttCostClassification: 'Actual',
+      diarizationSource: 'Xai',
+      diarizationProvider: 'xAI',
+      diarizationModel: 'grok-stt-1.0',
+      diarizationRequestCount: 1,
+      diarizationCostUsd: 0.1,
+      diarizationRateUsdPerHour: 0.1,
+      diarizationCostClassification: 'Estimated',
+      roleAttributionModel: 'google/gemini-3.7-flash',
+      roleAttributionStatus: 'Completed',
+      roleAttributionPromptTokens: 1200,
+      roleAttributionOutputTokens: 80,
+      roleAttributionCostUsd: 0.002,
+      totalCostUsd: 0.172,
+      totalContainsEstimate: true,
+    },
+  });
+
+  for (const width of [375, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/projects/project-1');
+    const details = page.getByRole('button', { name: /Processing Details/ });
+    await expect(details).toHaveAttribute('aria-controls', 'processing-details-panel');
+    await details.focus();
+    await details.press('Enter');
+    await expect(details).toHaveAttribute('aria-expanded', 'true');
+    await expect(page.getByRole('heading', { name: 'Speaker diarization' })).toBeVisible();
+    await expect(page.getByText('Diarization source: xAI')).toBeVisible();
+    await expect(page.getByText(/STT cost: \$0\.0700 \(Actual\)/)).toBeVisible();
+    await expect(page.getByText(/Diarization cost: \$0\.1000 \(Estimated\)/)).toBeVisible();
+    await expect(page.getByText(/Role cost: \$0\.0020 \(Actual\)/)).toBeVisible();
+    await expect(page.getByText(/Total \(includes estimate\): \$0\.1720/)).toBeVisible();
+    await assertNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: testInfo.outputPath(`hybrid-processing-${width}.png`),
+      fullPage: true,
+      animations: 'disabled',
+    });
+  }
+});
+
+test('direct xAI and legacy processing metadata avoid duplicate or ghost costs', async ({ page }, testInfo) => {
+  await installMockApi(page, { seedCompletedProject: true });
+  await page.goto('/projects/project-1');
+  await page.getByRole('button', { name: /Processing Details/ }).click();
+  await expect(page.getByText('Diarization cost: Included in STT (no separate diarization charge)')).toBeVisible();
+  await expect(page.getByText(/Diarization cost: \$0\./)).toHaveCount(0);
+  await page.screenshot({
+    path: testInfo.outputPath('direct-native-processing.png'),
+    fullPage: true,
+    animations: 'disabled',
+  });
+
+  await page.unroute('**/api/**');
+  await installMockApi(page, { seedCompletedProject: true, hostedProcessing: null });
+  await page.goto('/projects/project-1');
+  await page.getByRole('button', { name: /Processing Details/ }).click();
+  await expect(page.getByRole('heading', { name: 'Speaker diarization' })).toBeVisible();
+  await expect(page.getByText('Diarization source: Not used')).toBeVisible();
+  await expect(page.getByText(/STT cost:|Diarization cost:|Total \(/)).toHaveCount(0);
+  await expect(page.getByText(/undefined|NaN/)).toHaveCount(0);
+  await assertNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: testInfo.outputPath('legacy-processing.png'),
+    fullPage: true,
+    animations: 'disabled',
+  });
+});
+
+test('keeps the selected Settings tab fully visible after 375px keyboard traversal', async ({ page }) => {
+  // Given a narrow Settings tab strip.
+  await installMockApi(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/settings');
+
+  const settingsTab = page.getByRole('tab', { name: 'Settings', exact: true });
+  const modelManagerTab = page.getByRole('tab', { name: 'Local Model Manager', exact: true });
+  const capabilitiesTab = page.getByRole('tab', { name: 'System Capabilities', exact: true });
+
+  // When the native roving-tab interaction traverses away from and back to Settings.
+  await settingsTab.focus();
+  await settingsTab.press('ArrowRight');
+  await modelManagerTab.press('ArrowRight');
+  await capabilitiesTab.press('ArrowLeft');
+  await modelManagerTab.press('ArrowLeft');
+
+  // Then the selected tab is not clipped or scrolled outside the tab strip.
+  await expect(settingsTab).toHaveAttribute('aria-selected', 'true');
+  await expectTabToBeFullyVisible(settingsTab);
+});
+
+test('keeps a pointer-selected Settings tab fully visible at 375px', async ({ page }) => {
+  // Given a narrow Settings tab strip positioned at its far end.
+  await installMockApi(page);
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/settings');
+
+  const settingsTab = page.getByRole('tab', { name: 'Settings', exact: true });
+  const modelManagerTab = page.getByRole('tab', { name: 'Local Model Manager', exact: true });
+  const capabilitiesTab = page.getByRole('tab', { name: 'System Capabilities', exact: true });
+  await settingsTab.focus();
+  await settingsTab.press('End');
+  await expectTabToBeFullyVisible(capabilitiesTab);
+
+  // When a visible Settings tab is selected with a pointer click.
+  await modelManagerTab.click();
+
+  // Then its full label remains inside the scrollable tab strip.
+  await expect(modelManagerTab).toHaveAttribute('aria-selected', 'true');
+  await expectTabToBeFullyVisible(modelManagerTab);
+});
+
+test('keeps the desktop shell anchored across keyboard and pointer tab changes', async ({ page }) => {
+  // Given the full desktop Settings shell at its initial document position.
+  await installMockApi(page);
+  await page.setViewportSize({ width: 1280, height: 900 });
+  await page.goto('/settings');
+
+  const settingsTab = page.getByRole('tab', { name: 'Settings', exact: true });
+  const modelManagerTab = page.getByRole('tab', { name: 'Local Model Manager', exact: true });
+  const capabilitiesTab = page.getByRole('tab', { name: 'System Capabilities', exact: true });
+
+  // When native keyboard traversal and a pointer selection activate the non-default tabs.
+  await settingsTab.focus();
+  await settingsTab.press('ArrowRight');
+  await modelManagerTab.press('ArrowRight');
+  await modelManagerTab.click();
+
+  // Then no outer document scrolling or wide-shell displacement occurs.
+  await expect.poll(() => page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }))).toEqual({ x: 0, y: 0 });
+  await expect(page.getByText('TranscriptLab', { exact: true })).toBeVisible();
+  await expectTabToBeFullyVisible(settingsTab);
+  await expectTabToBeFullyVisible(modelManagerTab);
+  await expectTabToBeFullyVisible(capabilitiesTab);
+});
+
+test('settings tabs lazy loading and keyboard', async ({ page }, testInfo) => {
+  const modelRequests: string[] = [];
+  const capabilityRequests: string[] = [];
+  page.on('request', (request) => {
+    const pathname = new URL(request.url()).pathname;
+    if (pathname === '/api/settings/models') modelRequests.push(pathname);
+    if (pathname === '/api/settings/capabilities') capabilityRequests.push(pathname);
+  });
+  await installMockApi(page);
+
+  for (const width of [375, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/settings');
+    const modelRequestCountBeforeActivation = modelRequests.length;
+    const capabilityRequestCountBeforeActivation = capabilityRequests.length;
+
+    const settingsTab = page.getByRole('tab', { name: 'Settings', exact: true });
+    const modelManagerTab = page.getByRole('tab', { name: 'Local Model Manager', exact: true });
+    const capabilitiesTab = page.getByRole('tab', { name: 'System Capabilities', exact: true });
+    await expect(settingsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(modelManagerTab).toHaveAttribute('aria-selected', 'false');
+    await expect(capabilitiesTab).toHaveAttribute('aria-selected', 'false');
+    await expect(settingsTab).toHaveAttribute('aria-controls', 'settings-tabpanel');
+    await expect(page.getByRole('tabpanel', { name: 'Settings' })).toHaveAttribute('aria-labelledby', 'settings-tab');
+    await expect(page.locator('header').getByRole('button', { name: 'Save' })).toBeVisible();
+    await expect(page.locator('header').getByRole('button', { name: 'Reset' })).toBeVisible();
+    expect(modelRequests).toHaveLength(modelRequestCountBeforeActivation);
+    expect(capabilityRequests).toHaveLength(capabilityRequestCountBeforeActivation);
+
+    await page.getByRole('combobox', { name: 'Engine' }).click();
+    await page.getByRole('option', { name: 'OpenRouter' }).click();
+    const documentScrollBeforeTabTraversal = await page.evaluate(() => ({ x: window.scrollX, y: window.scrollY }));
+    expect(documentScrollBeforeTabTraversal).toEqual({ x: 0, y: 0 });
+
+    await settingsTab.focus();
+    await settingsTab.press('ArrowRight');
+    await expect(modelManagerTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('tabpanel', { name: 'Local Model Manager' })).toBeVisible();
+    await expect(page.locator('header').getByRole('button', { name: 'Save' })).toHaveCount(0);
+    await expect(page.locator('header').getByRole('button', { name: 'Reset' })).toHaveCount(0);
+    await expect.poll(() => modelRequests.length).toBe(modelRequestCountBeforeActivation + 1);
+    expect(capabilityRequests).toHaveLength(capabilityRequestCountBeforeActivation);
+    await expectTabToBeFullyVisible(modelManagerTab);
+    await assertNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: testInfo.outputPath(`local-model-manager-${width}.png`),
+      fullPage: true,
+      animations: 'disabled',
+    });
+
+    await modelManagerTab.press('ArrowRight');
+    await expect(capabilitiesTab).toHaveAttribute('aria-selected', 'true');
+    const capabilitiesPanel = page.getByRole('tabpanel', { name: 'System Capabilities' });
+    await expect(capabilitiesPanel).toBeVisible();
+    await expect.poll(() => capabilityRequests.length).toBe(capabilityRequestCountBeforeActivation + 1);
+    await expect(capabilitiesPanel.getByRole('heading', { name: 'Hosted providers' })).toBeVisible();
+    await expect(capabilitiesPanel.getByText('OpenRouter', { exact: true })).toBeVisible();
+    await expect(capabilitiesPanel.getByText('OpenVINO', { exact: true })).toBeVisible();
+    await page.getByRole('button', { name: 'Refresh capabilities' }).click();
+    await expect.poll(() => capabilityRequests.length).toBe(capabilityRequestCountBeforeActivation + 2);
+    await expect.poll(() => page.evaluate(() => window.scrollX)).toBe(documentScrollBeforeTabTraversal.x);
+    if (width === 1280) {
+      await expect.poll(() => page.evaluate(() => window.scrollY)).toBe(documentScrollBeforeTabTraversal.y);
+      await expect(page.getByText('TranscriptLab', { exact: true })).toBeVisible();
+      await expectTabToBeFullyVisible(settingsTab);
+    }
+    await assertNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: testInfo.outputPath(`system-capabilities-${width}.png`),
+      fullPage: true,
+      animations: 'disabled',
+    });
+
+    await capabilitiesTab.press('ArrowLeft');
+    await expect(modelManagerTab).toHaveAttribute('aria-selected', 'true');
+    await modelManagerTab.press('ArrowLeft');
+    await expect(settingsTab).toHaveAttribute('aria-selected', 'true');
+    await expect(page.getByRole('combobox', { name: 'Engine' })).toHaveText('OpenRouter');
+    await assertNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: testInfo.outputPath(`settings-tabs-${width}.png`),
+      fullPage: true,
+      animations: 'disabled',
+    });
+  }
+});
+
+test('verified OpenRouter exposes xAI source in settings, upload, and retry', async ({ page }) => {
+  await installMockApi(page, { seedFailedProject: true });
+
+  await page.goto('/settings');
+  await page.getByRole('combobox', { name: 'Engine' }).click();
+  await page.getByRole('option', { name: 'OpenRouter' }).click();
+  await page.getByRole('switch').nth(1).click();
+  await page.getByRole('combobox', { name: 'Diarization Source' }).click();
+  await expect(page.getByRole('option', { name: 'xAI mode' })).toBeVisible();
+  await page.getByRole('option', { name: 'xAI mode' }).click();
+  await expect(page.getByText(/whole prepared FLAC/i)).toBeVisible();
+  await expect(page.getByText(/job fails/i)).toBeVisible();
+
+  await page.goto('/folders/folder-1');
+  await page.locator('input[type="file"]').setInputFiles({
+    name: 'lecture02.mp3',
+    mimeType: 'audio/mpeg',
+    buffer: Buffer.from('mock-audio'),
+  });
+  await page.getByRole('combobox', { name: 'Engine' }).click();
+  await page.getByRole('option', { name: 'OpenRouter' }).click();
+  await page.getByRole('switch').nth(1).click();
+  await page.getByRole('combobox', { name: 'Diarization Source' }).click();
+  await expect(page.getByRole('option', { name: 'xAI mode' })).toBeVisible();
+  await page.getByRole('option', { name: 'xAI mode' }).click();
+  await expect(page.getByText(/whole prepared FLAC/i)).toBeVisible();
+  await page.getByRole('button', { name: 'Cancel' }).click();
+
+  await page.goto('/projects/project-1');
+  await page.getByRole('button', { name: 'Retry' }).first().click();
+  await expect(page.getByRole('dialog', { name: 'Retry Project' })).toBeVisible();
+  await page.getByRole('dialog').getByRole('combobox', { name: 'Engine' }).click();
+  await page.getByRole('option', { name: 'OpenRouter' }).click();
+  await page.getByRole('dialog').getByRole('switch').nth(1).click();
+  await page.getByRole('dialog').getByRole('combobox', { name: 'Diarization Source' }).click();
+  await expect(page.getByRole('option', { name: 'xAI mode' })).toBeVisible();
+  await page.getByRole('option', { name: 'xAI mode' }).click();
+  await expect(page.getByRole('dialog').getByText(/whole prepared FLAC/i)).toBeVisible();
+});
+
+test('unsupported model hides xAI and sensitive capability fields', async ({ page }, testInfo) => {
+  await installMockApi(page, {
+    transcriptionOptions: {
+      engines: [
+        { engine: 'WhisperNet', models: ['small'], providerDiarizationModels: [], wordTimestampModels: [] },
+        { engine: 'OpenRouter', models: ['deepgram/nova-3'], providerDiarizationModels: [], wordTimestampModels: ['deepgram/nova-3'] },
+      ],
+      speakerRoleAttributionAvailable: false,
+      speakerRoleAttributionModel: '',
+      recommendedHostedEngine: null,
+      recommendedHostedModel: null,
+      xaiDiarizationAvailable: true,
+      xaiDiarizationModel: 'grok-stt-1.0',
+    },
+    capabilitiesStatus: 500,
+    capabilities: {
+      code: 'internal_error',
+      message: 'SHOULD_NOT_RENDER_API_KEY_OR_PRIVATE_URL',
+      apiKey: 'SHOULD_NOT_RENDER_API_KEY_OR_PRIVATE_URL',
+      baseUrl: 'https://private.example.test/SHOULD_NOT_RENDER_API_KEY_OR_PRIVATE_URL',
+      deviceId: 'GPU-SHOULD_NOT_RENDER_API_KEY_OR_PRIVATE_URL',
+    },
+  });
+
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.goto('/settings');
+  await page.getByRole('combobox', { name: 'Engine' }).click();
+  await page.getByRole('option', { name: 'OpenRouter' }).click();
+  await page.getByRole('switch').nth(1).click();
+  await page.getByRole('combobox', { name: 'Diarization Source' }).click();
+  await expect(page.getByRole('option', { name: 'xAI mode' })).toHaveCount(0);
+  await page.keyboard.press('Escape');
+
+  await page.getByRole('tab', { name: 'System Capabilities' }).click();
+  await expect(page.getByText('Unable to load system capabilities.')).toBeVisible();
+  await expect(page.getByText('SHOULD_NOT_RENDER_API_KEY_OR_PRIVATE_URL')).toHaveCount(0);
+  await assertNoHorizontalOverflow(page);
+  await page.screenshot({
+    path: testInfo.outputPath('unsupported-capabilities-375.png'),
+    fullPage: true,
+    animations: 'disabled',
+  });
 });
 
 for (const viewport of MOBILE_VIEWPORTS) {
@@ -648,7 +1163,7 @@ for (const viewport of MOBILE_VIEWPORTS) {
     await page.locator('header').getByRole('button', { name: 'Open navigation' }).click();
     await page.getByRole('button', { name: 'Settings' }).click();
     await expect(page).toHaveURL(/\/settings$/);
-    await expect(page.getByText('Model Manager')).toBeVisible();
+    await expect(page.getByRole('tab', { name: 'Local Model Manager', exact: true })).toBeVisible();
     await assertNoHorizontalOverflow(page);
 
     await page.goto('/folders/folder-1');
@@ -676,3 +1191,127 @@ for (const viewport of MOBILE_VIEWPORTS) {
     await assertNoHorizontalOverflow(page);
   });
 }
+
+test('captures unified processing details at responsive breakpoints', async ({ page }, testInfo) => {
+  await installMockApi(page, { seedCompletedProject: true });
+  for (const width of [375, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/projects/project-1');
+    await expect(page.getByText('Processing Details')).toBeVisible();
+    await page.getByText('Processing Details').click();
+    await expect(page.getByText('STT model / engine')).toBeVisible();
+    await assertNoHorizontalOverflow(page);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({
+      path: testInfo.outputPath(`processing-details-${width}.png`),
+      fullPage: true,
+      animations: 'disabled',
+    });
+  }
+});
+
+test('captures diarization source modes at responsive breakpoints', async ({ page }, testInfo) => {
+  await installMockApi(page);
+
+  for (const width of [375, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/settings');
+
+    await page.getByRole('combobox', { name: 'Engine' }).click();
+    await page.getByRole('option', { name: 'xAI (direct)' }).click();
+    await expect(page.getByRole('listbox')).toHaveCount(0);
+    await page.getByRole('switch').nth(1).click();
+    await expect(page.getByRole('combobox', { name: 'Diarization Source' })).toHaveText(/Provider mode/);
+    await expect(page.getByRole('combobox', { name: 'Local Diarization Mode' })).toHaveCount(0);
+    await assertNoHorizontalOverflow(page);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({
+      path: testInfo.outputPath(`diarization-xai-provider-${width}.png`),
+      fullPage: true,
+      animations: 'disabled',
+    });
+
+    await page.getByRole('combobox', { name: 'Diarization Source' }).click();
+    await page.getByRole('option', { name: 'Local mode' }).click();
+    await expect(page.getByRole('listbox')).toHaveCount(0);
+    await expect(page.getByRole('combobox', { name: 'Local Diarization Mode' })).toBeVisible();
+    await assertNoHorizontalOverflow(page);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({
+      path: testInfo.outputPath(`diarization-xai-local-${width}.png`),
+      fullPage: true,
+      animations: 'disabled',
+    });
+
+    await page.getByRole('combobox', { name: 'Engine' }).click();
+    await page.getByRole('option', { name: 'OpenRouter' }).click();
+    await expect(page.getByRole('listbox')).toHaveCount(0);
+    await expect(page.getByRole('combobox', { name: 'Diarization Source' })).toHaveText(/Local mode/);
+    await expect(page.getByRole('combobox', { name: 'Local Diarization Mode' })).toBeVisible();
+    await assertNoHorizontalOverflow(page);
+    await page.evaluate(() => window.scrollTo(0, 0));
+    await page.screenshot({
+      path: testInfo.outputPath(`diarization-openrouter-local-${width}.png`),
+      fullPage: true,
+      animations: 'disabled',
+    });
+  }
+});
+
+test('integrated hosted long-form surfaces preserve settings, costs, capabilities, and diagnostics', async ({ page }, testInfo) => {
+  await installMockApi(page, {
+    seedCompletedProject: true,
+    hostedProcessing: {
+      sttProvider: 'OpenRouter',
+      sttModel: 'openai/whisper-large-v3',
+      audioDurationMs: 1_201_000,
+      requestCount: 3,
+      nativeDiarizationUsed: false,
+      sttCostUsd: 0.07,
+      sttRateUsdPerHour: 0.209825,
+      sttCostClassification: 'Actual',
+      diarizationSource: 'Xai',
+      diarizationProvider: 'xAI',
+      diarizationModel: 'grok-stt-1.0',
+      diarizationRequestCount: 1,
+      diarizationCostUsd: 0.033361,
+      diarizationRateUsdPerHour: 0.1,
+      diarizationCostClassification: 'Estimated',
+      roleAttributionModel: null,
+      roleAttributionStatus: null,
+      roleAttributionPromptTokens: null,
+      roleAttributionOutputTokens: null,
+      roleAttributionCostUsd: null,
+      totalCostUsd: 0.103361,
+      totalContainsEstimate: true,
+    },
+  });
+
+  for (const width of [375, 768, 1280]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.goto('/settings');
+    await page.getByRole('tab', { name: 'System Capabilities' }).click();
+    await expect(page.getByText('OpenRouter', { exact: true })).toBeVisible();
+    await expect(page.getByText('xAI', { exact: true })).toBeVisible();
+    await expect(page.getByText('SENSITIVE_CAPABILITY_SENTINEL')).toHaveCount(0);
+
+    await page.goto('/projects/project-1');
+    const details = page.getByRole('button', { name: /Processing Details/ });
+    await details.click();
+    await expect(page.getByText(/STT cost: \$0\.0700 \(Actual\)/)).toBeVisible();
+    await expect(page.getByText(/Diarization cost: \$0\.0334 \(Estimated\)/)).toBeVisible();
+    await expect(page.getByText(/Total \(includes estimate\): \$0\.1034/)).toBeVisible();
+    await assertNoHorizontalOverflow(page);
+    await page.screenshot({
+      path: testInfo.outputPath(`integrated-hosted-long-form-${width}.png`),
+      fullPage: true,
+      animations: 'disabled',
+    });
+
+    await page.goto('/diagnostics');
+    await expect(page.getByRole('heading', { name: 'Diagnostics' })).toBeVisible();
+    await expect(page.getByRole('heading', { name: 'Runtime', exact: true })).toBeVisible();
+    await expect(page.getByText('WhisperNet.CPU • small', { exact: true })).toBeVisible();
+    await assertNoHorizontalOverflow(page);
+  }
+});

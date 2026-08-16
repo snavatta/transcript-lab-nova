@@ -13,7 +13,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "test:watch": "vitest",
-    "test:e2e": "npm run build && playwright test"
+    "test:e2e": "node e2e/run-e2e.mjs"
   },
   "dependencies": {
     "@emotion/react": "^11.14.0",
