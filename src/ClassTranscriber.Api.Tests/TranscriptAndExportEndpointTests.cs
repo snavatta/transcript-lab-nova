@@ -55,6 +55,90 @@ public class TranscriptAndExportEndpointTests : IAsyncLifetime
     }
 
     [Fact]
+    public async Task GetTranscript_HybridCostsSerializeIndependently_WithEstimatedTotal()
+    {
+        var projectId = await SeedProjectAsync(includeTranscript: true, configureTranscript: transcript =>
+        {
+            transcript.HostedSttProvider = "OpenRouter";
+            transcript.HostedSttModel = "openai/whisper-large-v3";
+            transcript.DurationMs = 1_201_000;
+            transcript.HostedRequestCount = HostedLongFormTestFixtures.LongFormRequestCount;
+            transcript.NativeDiarizationUsed = false;
+            transcript.HostedSttCostMicroUsd = HostedLongFormTestFixtures.LongFormSttCostMicroUsd;
+            transcript.HostedSttRateMicroUsdPerHour = 2_500_000;
+            transcript.HostedSttCostClassification = "Actual";
+            transcript.DiarizationSource = "Xai";
+            transcript.HostedDiarizationProvider = "Xai";
+            transcript.HostedDiarizationModel = "grok-stt-1.0";
+            transcript.HostedDiarizationRequestCount = 1;
+            transcript.HostedDiarizationCostMicroUsd = HostedLongFormTestFixtures.HybridDiarizationCostMicroUsd;
+            transcript.HostedDiarizationRateMicroUsdPerHour = 1_500_000;
+            transcript.HostedDiarizationCostClassification = "Estimated";
+            transcript.SpeakerRoleCostMicroUsd = 100_000;
+        });
+
+        var response = await _client.GetAsync($"/api/projects/{projectId}/transcript");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var document = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var hosted = document.GetProperty("hostedProcessing");
+        hosted.GetProperty("audioDurationMs").GetInt64().Should().Be(1_201_000);
+        hosted.GetProperty("requestCount").GetInt32().Should().Be(3);
+        hosted.GetProperty("sttCostUsd").GetDecimal().Should().Be(0.6m);
+        hosted.GetProperty("sttCostClassification").GetString().Should().Be("Actual");
+        hosted.GetProperty("diarizationRequestCount").GetInt32().Should().Be(1);
+        hosted.GetProperty("diarizationCostUsd").GetDecimal().Should().Be(0.7m);
+        hosted.GetProperty("diarizationCostClassification").GetString().Should().Be("Estimated");
+        hosted.GetProperty("roleAttributionCostUsd").GetDecimal().Should().Be(0.1m);
+        hosted.GetProperty("totalCostUsd").GetDecimal().Should().Be(1.4m);
+        hosted.GetProperty("totalContainsEstimate").GetBoolean().Should().BeTrue();
+        hosted.GetProperty("nativeDiarizationUsed").GetBoolean().Should().BeFalse();
+    }
+
+    [Fact]
+    public async Task GetTranscript_DirectXaiProvider_DoesNotDoubleCountNativeDiarization()
+    {
+        var projectId = await SeedProjectAsync(includeTranscript: true, configureTranscript: transcript =>
+        {
+            transcript.HostedSttProvider = "Xai";
+            transcript.HostedSttModel = "grok-stt-1.0";
+            transcript.HostedRequestCount = 1;
+            transcript.NativeDiarizationUsed = true;
+            transcript.HostedSttCostMicroUsd = 2_000_000;
+            transcript.HostedSttCostClassification = "Estimated";
+            transcript.DiarizationSource = "Provider";
+        });
+
+        var response = await _client.GetAsync($"/api/projects/{projectId}/transcript");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var document = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var hosted = document.GetProperty("hostedProcessing");
+        hosted.GetProperty("nativeDiarizationUsed").GetBoolean().Should().BeTrue();
+        hosted.GetProperty("diarizationSource").GetString().Should().Be("Provider");
+        hosted.GetProperty("diarizationRequestCount").GetInt32().Should().Be(0);
+        hosted.TryGetProperty("diarizationCostUsd", out _).Should().BeFalse();
+        hosted.GetProperty("totalCostUsd").GetDecimal().Should().Be(2m);
+        hosted.GetProperty("totalContainsEstimate").GetBoolean().Should().BeTrue();
+    }
+
+    [Fact]
+    public async Task GetTranscript_CostOverflowFailsInsteadOfWrapping()
+    {
+        var projectId = await SeedProjectAsync(includeTranscript: true, configureTranscript: transcript =>
+        {
+            transcript.HostedSttProvider = "OpenRouter";
+            transcript.HostedSttModel = "openai/whisper-large-v3";
+            transcript.HostedSttCostMicroUsd = long.MaxValue;
+            transcript.HostedDiarizationCostMicroUsd = 1;
+        });
+
+        var response = await _client.GetAsync($"/api/projects/{projectId}/transcript");
+
+        response.StatusCode.Should().Be(HttpStatusCode.InternalServerError);
+    }
+
+    [Fact]
     public async Task ExportPdf_ReturnsActualPdfBytes()
     {
         var projectId = await SeedProjectAsync(includeTranscript: true);
@@ -119,7 +203,8 @@ public class TranscriptAndExportEndpointTests : IAsyncLifetime
         string originalFileName = "lecture-01.wav",
         string storedFileName = "lecture-01.wav",
         string fileExtension = ".wav",
-        bool includeDerivedAudio = false)
+        bool includeDerivedAudio = false,
+        Action<Transcript>? configureTranscript = null)
     {
         await using var scope = _factory.Services.CreateAsyncScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
@@ -179,7 +264,7 @@ public class TranscriptAndExportEndpointTests : IAsyncLifetime
 
         if (includeTranscript)
         {
-            db.Transcripts.Add(new Transcript
+            var transcript = new Transcript
             {
                 Id = Guid.NewGuid(),
                 ProjectId = project.Id,
@@ -199,7 +284,9 @@ public class TranscriptAndExportEndpointTests : IAsyncLifetime
                 SegmentCount = 1,
                 CreatedAtUtc = DateTime.UtcNow,
                 UpdatedAtUtc = DateTime.UtcNow,
-            });
+            };
+            configureTranscript?.Invoke(transcript);
+            db.Transcripts.Add(transcript);
         }
 
         await db.SaveChangesAsync();

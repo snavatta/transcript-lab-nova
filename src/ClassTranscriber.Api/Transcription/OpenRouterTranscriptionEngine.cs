@@ -2,6 +2,7 @@ using System.Text.Json;
 using System.Text.Json.Serialization;
 using ClassTranscriber.Api.Contracts;
 using ClassTranscriber.Api.Domain;
+using ClassTranscriber.Api.Media;
 using ClassTranscriber.Api.Transcription.SpeechToText;
 using Microsoft.Extensions.AI;
 using Microsoft.Extensions.DependencyInjection;
@@ -9,36 +10,67 @@ using Microsoft.Extensions.Options;
 
 namespace ClassTranscriber.Api.Transcription;
 
+public sealed record OpenRouterChunkProgress(
+    int ChunkIndex,
+    int ChunkCount,
+    long CoreStartMs,
+    long CoreEndMs,
+    TranscriptionResult CumulativeResult);
+
+public interface IOpenRouterChunkProgressTranscriptionEngine : ITranscriptionEngine
+{
+    Task<TranscriptionResult> TranscribeAsync(
+        string audioPath,
+        ProjectSettings settings,
+        Func<OpenRouterChunkProgress, CancellationToken, ValueTask>? onChunkSucceeded,
+        CancellationToken ct = default);
+}
+
 public sealed class OpenRouterOptions
 {
     public string BaseUrl { get; set; } = "https://openrouter.ai/api/v1";
     public string ApiKey { get; set; } = string.Empty;
     public string[] FallbackModels { get; set; } = ["openai/whisper-large-v3"];
     public int TimeoutSeconds { get; set; } = 120;
+    public string SpeakerRoleModel { get; set; } = OpenRouterSpeakerRoleAttributionService.DefaultModel;
 }
 
-public sealed class OpenRouterTranscriptionEngine : IRegisteredTranscriptionEngine
+public sealed class OpenRouterTranscriptionEngine :
+    IRegisteredTranscriptionEngine,
+    IOpenRouterChunkProgressTranscriptionEngine
 {
     public const string HttpClientName = "OpenRouter";
 
     private readonly OpenRouterOptions _options;
     private readonly ISpeechToTextClient _speechToTextClient;
     private readonly IHttpClientFactory _httpClientFactory;
+    private readonly OpenRouterLongFormTranscriber _longFormTranscriber;
     private readonly ILogger<OpenRouterTranscriptionEngine> _logger;
 
     public OpenRouterTranscriptionEngine(
         IOptions<OpenRouterOptions> options,
         [FromKeyedServices("OpenRouter")] ISpeechToTextClient speechToTextClient,
         IHttpClientFactory httpClientFactory,
+        IHostedAudioPreparationService hostedAudioPreparationService,
+        IMediaInspector mediaInspector,
         ILogger<OpenRouterTranscriptionEngine> logger)
     {
         _options = options.Value;
         _speechToTextClient = speechToTextClient;
+        var openRouterSpeechToTextClient = speechToTextClient as OpenRouterSpeechToTextClient
+            ?? throw new ArgumentException("The OpenRouter speech client is invalid.", nameof(speechToTextClient));
         _httpClientFactory = httpClientFactory;
+        _longFormTranscriber = new OpenRouterLongFormTranscriber(
+            openRouterSpeechToTextClient,
+            hostedAudioPreparationService,
+            mediaInspector);
         _logger = logger;
     }
 
     public string EngineId => "OpenRouter";
+
+    public IReadOnlyCollection<string> WordTimestampModels =>
+        ["openai/whisper-large-v3", "openai/whisper-large-v3-turbo"];
 
     public IReadOnlyCollection<string> SupportedModels
     {
@@ -51,13 +83,22 @@ public sealed class OpenRouterTranscriptionEngine : IRegisteredTranscriptionEngi
             {
                 using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
                 var client = _httpClientFactory.CreateClient(HttpClientName);
-                using var response = client.GetAsync("models?output_modalities=transcription", cts.Token)
+                using var request = new HttpRequestMessage(
+                    HttpMethod.Get,
+                    "models?output_modalities=transcription");
+                using var response = client.SendAsync(
+                        request,
+                        HttpCompletionOption.ResponseHeadersRead,
+                        cts.Token)
                     .GetAwaiter().GetResult();
 
                 if (response.IsSuccessStatusCode)
                 {
-                    var json = response.Content.ReadAsStringAsync(cts.Token).GetAwaiter().GetResult();
-                    var catalog = JsonSerializer.Deserialize<OpenRouterModelListResponse>(json);
+                    var catalog = BoundedHttpContentReader.ReadJsonAsync<OpenRouterModelListResponse>(
+                            response.Content,
+                            "OpenRouter model catalog response exceeded the maximum allowed size.",
+                            cts.Token)
+                        .GetAwaiter().GetResult();
                     var models = catalog?.Data?
                         .Select(model => model.Id)
                         .Where(model => !string.IsNullOrWhiteSpace(model))
@@ -74,6 +115,9 @@ public sealed class OpenRouterTranscriptionEngine : IRegisteredTranscriptionEngi
             {
             }
             catch (JsonException)
+            {
+            }
+            catch (ProviderResponseTooLargeException)
             {
             }
 
@@ -107,7 +151,13 @@ public sealed class OpenRouterTranscriptionEngine : IRegisteredTranscriptionEngi
         {
             using var cts = new CancellationTokenSource(TimeSpan.FromSeconds(5));
             var client = _httpClientFactory.CreateClient(HttpClientName);
-            using var response = client.GetAsync("models?output_modalities=transcription", cts.Token)
+            using var request = new HttpRequestMessage(
+                HttpMethod.Get,
+                "models?output_modalities=transcription");
+            using var response = client.SendAsync(
+                    request,
+                    HttpCompletionOption.ResponseHeadersRead,
+                    cts.Token)
                 .GetAwaiter().GetResult();
             return response.IsSuccessStatusCode
                 ? null
@@ -119,9 +169,16 @@ public sealed class OpenRouterTranscriptionEngine : IRegisteredTranscriptionEngi
         }
     }
 
+    public Task<TranscriptionResult> TranscribeAsync(
+        string audioPath,
+        ProjectSettings settings,
+        CancellationToken ct = default) =>
+        TranscribeAsync(audioPath, settings, onChunkSucceeded: null, ct);
+
     public async Task<TranscriptionResult> TranscribeAsync(
         string audioPath,
         ProjectSettings settings,
+        Func<OpenRouterChunkProgress, CancellationToken, ValueTask>? onChunkSucceeded,
         CancellationToken ct = default)
     {
         var availabilityError = GetAvailabilityError();
@@ -129,10 +186,19 @@ public sealed class OpenRouterTranscriptionEngine : IRegisteredTranscriptionEngi
             throw new InvalidOperationException(availabilityError);
 
         _logger.LogInformation(
-            "Starting {Engine} transcription for {AudioPath} with model {Model}",
+            "Starting {Engine} transcription with model {Model}",
             EngineId,
-            audioPath,
             settings.Model);
+
+        if (settings.DiarizationEnabled
+            && string.Equals(settings.DiarizationSource, "Xai", StringComparison.OrdinalIgnoreCase)
+            && !IsVerifiedWordModel(settings.Model))
+        {
+            throw new InvalidOperationException("OpenRouter word timestamps require a verified model.");
+        }
+
+        if (IsVerifiedWordModel(settings.Model))
+            return await _longFormTranscriber.TranscribeAsync(audioPath, settings, onChunkSucceeded, ct);
 
         await using var audioStream = File.OpenRead(audioPath);
         var speechOptions = new SpeechToTextOptions { ModelId = settings.Model };
@@ -143,7 +209,7 @@ public sealed class OpenRouterTranscriptionEngine : IRegisteredTranscriptionEngi
         }
 
         var response = await _speechToTextClient.GetTextAsync(audioStream, speechOptions, ct);
-        var result = MapResponse(response);
+        var result = OpenRouterTranscriptionResultMapper.Map(response, settings.Model);
 
         _logger.LogInformation(
             "{Engine} transcription completed: {SegmentCount} segments",
@@ -153,37 +219,15 @@ public sealed class OpenRouterTranscriptionEngine : IRegisteredTranscriptionEngi
         return result;
     }
 
+    private bool IsVerifiedWordModel(string model) =>
+        WordTimestampModels.Contains(model, StringComparer.OrdinalIgnoreCase);
+
     private IReadOnlyCollection<string> GetFallbackModels()
         => _options.FallbackModels
             .Where(model => !string.IsNullOrWhiteSpace(model))
             .Distinct(StringComparer.OrdinalIgnoreCase)
             .ToArray();
 
-    private static TranscriptionResult MapResponse(SpeechToTextResponse response)
-    {
-        if (response.RawRepresentation is not OpenAiVerboseTranscriptionResponse raw)
-        {
-            var fallbackSegments = string.IsNullOrWhiteSpace(response.Text)
-                ? []
-                : new[] { new TranscriptSegmentDto { StartMs = 0, EndMs = 0, Text = response.Text } };
-            return new TranscriptionResult(response.Text, fallbackSegments, null, null);
-        }
-
-        var durationSeconds = raw.Duration > 0 ? raw.Duration : raw.Usage?.Seconds;
-        var durationMs = durationSeconds is > 0 ? (long?)(durationSeconds.Value * 1000) : null;
-        var segments = raw.Segments is { Length: > 0 }
-            ? raw.Segments.Select(segment => new TranscriptSegmentDto
-            {
-                StartMs = (long)(segment.Start * 1000),
-                EndMs = (long)(segment.End * 1000),
-                Text = segment.Text,
-            }).ToArray()
-            : string.IsNullOrWhiteSpace(response.Text)
-                ? []
-                : [new TranscriptSegmentDto { StartMs = 0, EndMs = durationMs ?? 0, Text = response.Text }];
-
-        return new TranscriptionResult(response.Text, segments, raw.Language, durationMs);
-    }
 }
 
 file sealed class OpenRouterModelListResponse

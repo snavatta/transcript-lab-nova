@@ -58,7 +58,9 @@ public class ProjectSettings
     public string? LanguageCode { get; set; }
     public bool AudioNormalizationEnabled { get; set; } = true;
     public bool DiarizationEnabled { get; set; }
+    public string DiarizationSource { get; set; } = "Local";
     public string DiarizationMode { get; set; } = "Basic";
+    public bool SpeakerRoleAttributionEnabled { get; set; }
 }
 
 public class Transcript
@@ -70,6 +72,25 @@ public class Transcript
     public string? DetectedLanguage { get; set; }
     public long? DurationMs { get; set; }
     public int SegmentCount { get; set; }
+    public string? HostedSttProvider { get; set; }
+    public string? HostedSttModel { get; set; }
+    public int? HostedRequestCount { get; set; }
+    public bool? NativeDiarizationUsed { get; set; }
+    public long? HostedSttCostMicroUsd { get; set; }
+    public long? HostedSttRateMicroUsdPerHour { get; set; }
+    public string? HostedSttCostClassification { get; set; }
+    public string? DiarizationSource { get; set; }
+    public string? HostedDiarizationProvider { get; set; }
+    public string? HostedDiarizationModel { get; set; }
+    public int? HostedDiarizationRequestCount { get; set; }
+    public long? HostedDiarizationCostMicroUsd { get; set; }
+    public long? HostedDiarizationRateMicroUsdPerHour { get; set; }
+    public string? HostedDiarizationCostClassification { get; set; }
+    public string? SpeakerRoleAttributionModel { get; set; }
+    public string? SpeakerRoleAttributionStatus { get; set; }
+    public int? SpeakerRolePromptTokens { get; set; }
+    public int? SpeakerRoleOutputTokens { get; set; }
+    public long? SpeakerRoleCostMicroUsd { get; set; }
     public DateTime CreatedAtUtc { get; set; }
     public DateTime UpdatedAtUtc { get; set; }
 
@@ -85,6 +106,8 @@ public class GlobalSettings
     public string? DefaultLanguageCode { get; set; }
     public bool DefaultAudioNormalizationEnabled { get; set; } = true;
     public bool DefaultDiarizationEnabled { get; set; }
+    public string DefaultDiarizationSource { get; set; } = "Local";
     public string DefaultDiarizationMode { get; set; } = "Basic";
+    public bool DefaultSpeakerRoleAttributionEnabled { get; set; }
     public string DefaultTranscriptViewMode { get; set; } = "Readable";
 }

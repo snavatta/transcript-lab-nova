@@ -34,7 +34,9 @@ public class SettingsService : ISettingsService
         settings.DefaultLanguageCode = request.DefaultLanguageCode;
         settings.DefaultAudioNormalizationEnabled = request.DefaultAudioNormalizationEnabled;
         settings.DefaultDiarizationEnabled = request.DefaultDiarizationEnabled;
+        settings.DefaultDiarizationSource = request.DefaultDiarizationSource;
         settings.DefaultDiarizationMode = request.DefaultDiarizationMode;
+        settings.DefaultSpeakerRoleAttributionEnabled = request.DefaultSpeakerRoleAttributionEnabled;
         settings.DefaultTranscriptViewMode = request.DefaultTranscriptViewMode;
 
         await _db.SaveChangesAsync(ct);
@@ -60,7 +62,13 @@ public class SettingsService : ISettingsService
             DefaultLanguageCode = languageCode,
             DefaultAudioNormalizationEnabled = settings.DefaultAudioNormalizationEnabled,
             DefaultDiarizationEnabled = settings.DefaultDiarizationEnabled,
+            DefaultDiarizationSource = DiarizationSourcePolicy.NormalizeStored(
+                settings.DefaultDiarizationSource,
+                engine,
+                model,
+                engineRegistry),
             DefaultDiarizationMode = settings.DefaultDiarizationMode,
+            DefaultSpeakerRoleAttributionEnabled = settings.DefaultSpeakerRoleAttributionEnabled,
             DefaultTranscriptViewMode = settings.DefaultTranscriptViewMode,
         };
     }

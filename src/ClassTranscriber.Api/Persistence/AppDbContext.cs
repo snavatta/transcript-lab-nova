@@ -48,6 +48,7 @@ public class AppDbContext : DbContext
                 settings.Property(s => s.Model).HasMaxLength(50);
                 settings.Property(s => s.LanguageMode).HasMaxLength(20);
                 settings.Property(s => s.LanguageCode).HasMaxLength(20);
+                settings.Property(s => s.DiarizationSource).HasMaxLength(20);
                 settings.Property(s => s.DiarizationMode).HasMaxLength(20);
             });
 
@@ -58,6 +59,15 @@ public class AppDbContext : DbContext
         {
             entity.HasKey(e => e.Id);
             entity.Property(e => e.DetectedLanguage).HasMaxLength(20);
+            entity.Property(e => e.HostedSttProvider).HasMaxLength(50);
+            entity.Property(e => e.HostedSttModel).HasMaxLength(100);
+            entity.Property(e => e.HostedSttCostClassification).HasMaxLength(20);
+            entity.Property(e => e.DiarizationSource).HasMaxLength(20);
+            entity.Property(e => e.HostedDiarizationProvider).HasMaxLength(50);
+            entity.Property(e => e.HostedDiarizationModel).HasMaxLength(100);
+            entity.Property(e => e.HostedDiarizationCostClassification).HasMaxLength(20);
+            entity.Property(e => e.SpeakerRoleAttributionModel).HasMaxLength(100);
+            entity.Property(e => e.SpeakerRoleAttributionStatus).HasMaxLength(30);
         });
 
         modelBuilder.Entity<GlobalSettings>(entity =>
@@ -68,6 +78,7 @@ public class AppDbContext : DbContext
             entity.Property(e => e.DefaultLanguageMode).HasMaxLength(20);
             entity.Property(e => e.DefaultLanguageCode).HasMaxLength(20);
             entity.Property(e => e.DefaultTranscriptViewMode).HasMaxLength(20);
+            entity.Property(e => e.DefaultDiarizationSource).HasMaxLength(20);
             entity.Property(e => e.DefaultDiarizationMode).HasMaxLength(20);
 
             entity.HasData(new GlobalSettings());

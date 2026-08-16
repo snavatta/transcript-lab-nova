@@ -276,11 +276,17 @@ public class NoOpAudioNormalizer : IAudioNormalizer
 public class NoOpTranscriptionEngine(
     string engineId,
     IReadOnlyCollection<string> supportedModels,
-    string? availabilityError = null) : IRegisteredTranscriptionEngine
+    string? availabilityError = null,
+    IReadOnlyCollection<string>? providerDiarizationModels = null,
+    IReadOnlyCollection<string>? wordTimestampModels = null) : IRegisteredTranscriptionEngine
 {
     public string EngineId { get; } = engineId;
 
     public IReadOnlyCollection<string> SupportedModels { get; } = supportedModels;
+
+    public IReadOnlyCollection<string> ProviderDiarizationModels { get; } = providerDiarizationModels ?? [];
+
+    public IReadOnlyCollection<string> WordTimestampModels { get; } = wordTimestampModels ?? [];
 
     public string? GetAvailabilityError() => availabilityError;
 

@@ -50,6 +50,7 @@ public class SettingsEndpointTests : IAsyncLifetime
             defaultAudioNormalizationEnabled = false,
             defaultDiarizationEnabled = true,
             defaultDiarizationMode = "Basic",
+            defaultSpeakerRoleAttributionEnabled = true,
             defaultTranscriptViewMode = "Timestamped"
         };
 
@@ -61,6 +62,7 @@ public class SettingsEndpointTests : IAsyncLifetime
         settings.DefaultLanguageMode.Should().Be("Fixed");
         settings.DefaultLanguageCode.Should().Be("es");
         settings.DefaultDiarizationEnabled.Should().BeTrue();
+        settings.DefaultSpeakerRoleAttributionEnabled.Should().BeTrue();
     }
 
     [Fact]
@@ -123,6 +125,250 @@ public class SettingsEndpointTests : IAsyncLifetime
         options.Engines.Single(engine => engine.Engine == "SherpaOnnxSenseVoice").Models.Should().ContainSingle().Which.Should().Be("small");
         options.Engines.Single(engine => engine.Engine == "WhisperNetCuda").Models.Should().Contain(new[] { "tiny", "base", "small", "medium", "large", "large-v3-turbo" });
         options.Engines.Single(engine => engine.Engine == "WhisperNetCoreML").Models.Should().Contain(new[] { "tiny", "base", "small", "medium", "large", "large-v3-turbo" });
+        options.Engines.Should().OnlyContain(engine => engine.ProviderDiarizationModels.Length == 0);
+    }
+
+    [Fact]
+    public async Task GetSettingsOptions_AdvertisesProviderDiarizationPerEngineModel()
+    {
+        await using var providerFactory = new TestWebApplicationFactory(
+        [
+            new NoOpTranscriptionEngine("WhisperNet", ["small"]),
+            new NoOpTranscriptionEngine("Xai", ["grok-stt-1.0"], providerDiarizationModels: ["grok-stt-1.0"]),
+        ]);
+
+        var response = await providerFactory.Client.GetAsync("/api/settings/options");
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+
+        var options = await response.Content.ReadFromJsonAsync<TranscriptionOptionsDto>();
+        options.Should().NotBeNull();
+        options!.Engines.Single(engine => engine.Engine == "Xai").ProviderDiarizationModels
+            .Should().Equal("grok-stt-1.0");
+        options.Engines.Single(engine => engine.Engine == "WhisperNet").ProviderDiarizationModels
+            .Should().BeEmpty();
+    }
+
+    [Fact]
+    public async Task UpdateSettings_RejectsProviderDiarizationWhenModelDoesNotSupportIt()
+    {
+        var response = await _client.PutAsJsonAsync("/api/settings", new
+        {
+            defaultEngine = "WhisperNet",
+            defaultModel = "small",
+            defaultLanguageMode = "Auto",
+            defaultLanguageCode = (string?)null,
+            defaultAudioNormalizationEnabled = true,
+            defaultDiarizationEnabled = true,
+            defaultDiarizationSource = "Provider",
+            defaultDiarizationMode = "Basic",
+            defaultTranscriptViewMode = "Readable",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("does not support provider diarization");
+    }
+
+    [Fact]
+    public async Task UpdateSettings_AcceptsXaiForVerifiedOpenRouterModel()
+    {
+        await using var xaiFactory = CreateXaiDiarizationFactory();
+
+        var response = await xaiFactory.Client.PutAsJsonAsync("/api/settings", new
+        {
+            defaultEngine = "OpenRouter",
+            defaultModel = "openai/whisper-large-v3",
+            defaultLanguageMode = "Auto",
+            defaultLanguageCode = (string?)null,
+            defaultAudioNormalizationEnabled = true,
+            defaultDiarizationEnabled = true,
+            defaultDiarizationSource = "Xai",
+            defaultDiarizationMode = "Basic",
+            defaultTranscriptViewMode = "Readable",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var settings = await response.Content.ReadFromJsonAsync<GlobalSettingsDto>();
+        settings.Should().NotBeNull();
+        settings!.DefaultDiarizationSource.Should().Be("Xai");
+    }
+
+    [Fact]
+    public async Task UpdateSettings_AcceptsProviderForDirectXai()
+    {
+        await using var xaiFactory = CreateXaiDiarizationFactory();
+
+        var response = await xaiFactory.Client.PutAsJsonAsync("/api/settings", new
+        {
+            defaultEngine = "Xai",
+            defaultModel = "grok-stt-1.0",
+            defaultLanguageMode = "Auto",
+            defaultLanguageCode = (string?)null,
+            defaultAudioNormalizationEnabled = true,
+            defaultDiarizationEnabled = true,
+            defaultDiarizationSource = "Provider",
+            defaultDiarizationMode = "Basic",
+            defaultTranscriptViewMode = "Readable",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var settings = await response.Content.ReadFromJsonAsync<GlobalSettingsDto>();
+        settings!.DefaultDiarizationSource.Should().Be("Provider");
+    }
+
+    [Fact]
+    public async Task UpdateSettings_RejectsXaiSourceForDirectXaiEngine()
+    {
+        await using var xaiFactory = CreateXaiDiarizationFactory();
+
+        var response = await xaiFactory.Client.PutAsJsonAsync("/api/settings", new
+        {
+            defaultEngine = "Xai",
+            defaultModel = "grok-stt-1.0",
+            defaultLanguageMode = "Auto",
+            defaultLanguageCode = (string?)null,
+            defaultAudioNormalizationEnabled = true,
+            defaultDiarizationEnabled = true,
+            defaultDiarizationSource = "Xai",
+            defaultDiarizationMode = "Basic",
+            defaultTranscriptViewMode = "Readable",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task UpdateSettings_RejectsXaiWhenDirectXaiIsUnavailable()
+    {
+        await using var openRouterOnlyFactory = new TestWebApplicationFactory(
+        [
+            new NoOpTranscriptionEngine(
+                "OpenRouter",
+                ["openai/whisper-large-v3"],
+                wordTimestampModels: ["openai/whisper-large-v3"]),
+        ]);
+
+        var response = await openRouterOnlyFactory.Client.PutAsJsonAsync("/api/settings", new
+        {
+            defaultEngine = "OpenRouter",
+            defaultModel = "openai/whisper-large-v3",
+            defaultLanguageMode = "Auto",
+            defaultLanguageCode = (string?)null,
+            defaultAudioNormalizationEnabled = true,
+            defaultDiarizationEnabled = true,
+            defaultDiarizationSource = "Xai",
+            defaultDiarizationMode = "Basic",
+            defaultTranscriptViewMode = "Readable",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task GetSettingsOptions_DoesNotAdvertiseXaiDiarizationWhenDirectXaiApiKeyIsEmpty()
+    {
+        await using var unavailableFactory = CreateUnavailableXaiDiarizationFactory();
+
+        var response = await unavailableFactory.Client.GetAsync("/api/settings/options");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var options = await response.Content.ReadFromJsonAsync<TranscriptionOptionsDto>();
+        options!.XaiDiarizationAvailable.Should().BeFalse();
+        options.Engines.Should().NotContain(engine => engine.Engine == "Xai");
+    }
+
+    [Fact]
+    public async Task UpdateSettings_RejectsXaiWhenDirectXaiApiKeyIsEmptyAndBaseUrlIsValidHttps()
+    {
+        await using var unavailableFactory = CreateUnavailableXaiDiarizationFactory();
+
+        var response = await unavailableFactory.Client.PutAsJsonAsync("/api/settings", new
+        {
+            defaultEngine = "OpenRouter",
+            defaultModel = "openai/whisper-large-v3",
+            defaultLanguageMode = "Auto",
+            defaultLanguageCode = (string?)null,
+            defaultAudioNormalizationEnabled = true,
+            defaultDiarizationEnabled = true,
+            defaultDiarizationSource = "Xai",
+            defaultDiarizationMode = "Basic",
+            defaultTranscriptViewMode = "Readable",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Theory]
+    [InlineData("openai/gpt-4o-mini-transcribe", "Xai")]
+    [InlineData("deepgram/nova-3", "Xai")]
+    [InlineData("openai/whisper-large-v3", "Bogus")]
+    public async Task UpdateSettings_RejectsUnsupportedXaiSource(string model, string source)
+    {
+        await using var xaiFactory = CreateXaiDiarizationFactory();
+
+        var response = await xaiFactory.Client.PutAsJsonAsync("/api/settings", new
+        {
+            defaultEngine = "OpenRouter",
+            defaultModel = model,
+            defaultLanguageMode = "Auto",
+            defaultLanguageCode = (string?)null,
+            defaultAudioNormalizationEnabled = true,
+            defaultDiarizationEnabled = true,
+            defaultDiarizationSource = source,
+            defaultDiarizationMode = "Basic",
+            defaultTranscriptViewMode = "Readable",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("validation_error");
+    }
+
+    [Fact]
+    public async Task UpdateSettings_RejectsXaiWhenOpenRouterModelAdvertisesNativeDiarization()
+    {
+        await using var xaiFactory = new TestWebApplicationFactory(
+        [
+            new NoOpTranscriptionEngine(
+                "OpenRouter",
+                ["openai/whisper-large-v3"],
+                providerDiarizationModels: ["openai/whisper-large-v3"],
+                wordTimestampModels: ["openai/whisper-large-v3"]),
+            new NoOpTranscriptionEngine(
+                "Xai",
+                ["grok-stt-1.0"],
+                providerDiarizationModels: ["grok-stt-1.0"],
+                wordTimestampModels: ["grok-stt-1.0"]),
+        ]);
+
+        var response = await xaiFactory.Client.PutAsJsonAsync("/api/settings", new
+        {
+            defaultEngine = "OpenRouter",
+            defaultModel = "openai/whisper-large-v3",
+            defaultLanguageMode = "Auto",
+            defaultLanguageCode = (string?)null,
+            defaultAudioNormalizationEnabled = true,
+            defaultDiarizationEnabled = true,
+            defaultDiarizationSource = "Xai",
+            defaultDiarizationMode = "Basic",
+            defaultTranscriptViewMode = "Readable",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task GetSettingsOptions_AdvertisesWordModelsAndXaiDiarizationAvailability()
+    {
+        await using var xaiFactory = CreateXaiDiarizationFactory();
+
+        var response = await xaiFactory.Client.GetAsync("/api/settings/options");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var options = await response.Content.ReadFromJsonAsync<TranscriptionOptionsDto>();
+        options.Should().NotBeNull();
+        options!.Engines.Single(engine => engine.Engine == "OpenRouter").WordTimestampModels
+            .Should().Equal("openai/whisper-large-v3", "openai/whisper-large-v3-turbo");
+        options.XaiDiarizationAvailable.Should().BeTrue();
+        options.XaiDiarizationModel.Should().Be("grok-stt-1.0");
     }
 
     [Fact]
@@ -322,4 +568,65 @@ public class SettingsEndpointTests : IAsyncLifetime
         payload!.DefaultEngine.Should().Be("WhisperNet");
         payload.DefaultModel.Should().Be("medium");
     }
+
+    [Fact]
+    public async Task GetSettings_CoercesStaleXaiSourceToLocal()
+    {
+        await using var openRouterOnlyFactory = new TestWebApplicationFactory(
+        [
+            new NoOpTranscriptionEngine(
+                "OpenRouter",
+                ["openai/whisper-large-v3"],
+                wordTimestampModels: ["openai/whisper-large-v3"]),
+        ]);
+        await using (var scope = openRouterOnlyFactory.Services.CreateAsyncScope())
+        {
+            var db = scope.ServiceProvider.GetRequiredService<Persistence.AppDbContext>();
+            var settings = await db.GlobalSettings.SingleAsync();
+            settings.DefaultEngine = "OpenRouter";
+            settings.DefaultModel = "openai/whisper-large-v3";
+            settings.DefaultDiarizationSource = "Xai";
+            await db.SaveChangesAsync();
+        }
+
+        var response = await openRouterOnlyFactory.Client.GetAsync("/api/settings");
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var settingsPayload = await response.Content.ReadFromJsonAsync<GlobalSettingsDto>();
+        settingsPayload!.DefaultDiarizationSource.Should().Be("Local");
+    }
+
+    private static TestWebApplicationFactory CreateXaiDiarizationFactory()
+        => new(
+        [
+            new NoOpTranscriptionEngine(
+                "OpenRouter",
+                [
+                    "openai/whisper-large-v3",
+                    "openai/whisper-large-v3-turbo",
+                    "openai/gpt-4o-mini-transcribe",
+                    "deepgram/nova-3",
+                ],
+                wordTimestampModels: ["openai/whisper-large-v3", "openai/whisper-large-v3-turbo"]),
+            new NoOpTranscriptionEngine(
+                "Xai",
+                ["grok-stt-1.0"],
+                providerDiarizationModels: ["grok-stt-1.0"],
+                wordTimestampModels: ["grok-stt-1.0"]),
+        ]);
+
+    internal static TestWebApplicationFactory CreateUnavailableXaiDiarizationFactory()
+        => new(
+        [
+            new NoOpTranscriptionEngine(
+                "OpenRouter",
+                ["openai/whisper-large-v3", "openai/whisper-large-v3-turbo"],
+                wordTimestampModels: ["openai/whisper-large-v3", "openai/whisper-large-v3-turbo"]),
+            new NoOpTranscriptionEngine(
+                "Xai",
+                ["grok-stt-1.0"],
+                "xAI engine requires Transcription:Xai:ApiKey to be set.",
+                providerDiarizationModels: ["grok-stt-1.0"],
+                wordTimestampModels: ["grok-stt-1.0"]),
+        ]);
 }

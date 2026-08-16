@@ -95,7 +95,9 @@ public class UploadService : IUploadService
                     LanguageCode = effectiveSettings.LanguageCode,
                     AudioNormalizationEnabled = effectiveSettings.AudioNormalizationEnabled,
                     DiarizationEnabled = effectiveSettings.DiarizationEnabled,
+                    DiarizationSource = effectiveSettings.DiarizationSource,
                     DiarizationMode = effectiveSettings.DiarizationMode,
+                    SpeakerRoleAttributionEnabled = effectiveSettings.SpeakerRoleAttributionEnabled,
                 },
             };
 
@@ -136,7 +138,10 @@ public class UploadService : IUploadService
     private async Task<ProjectSettingsDto> ResolveEffectiveSettingsAsync(ProjectSettingsDto? settingsOverride, CancellationToken ct)
     {
         var effectiveSettings = settingsOverride ?? await GetDefaultProjectSettingsAsync(ct);
-        ValidateSettings(effectiveSettings);
+        if (settingsOverride is not null)
+            ValidateSettings(effectiveSettings);
+
+        DiarizationSourcePolicy.TryNormalize(effectiveSettings.DiarizationSource, out var diarizationSource);
 
         return new ProjectSettingsDto
         {
@@ -146,7 +151,9 @@ public class UploadService : IUploadService
             LanguageCode = string.IsNullOrWhiteSpace(effectiveSettings.LanguageCode) ? null : effectiveSettings.LanguageCode.Trim(),
             AudioNormalizationEnabled = effectiveSettings.AudioNormalizationEnabled,
             DiarizationEnabled = effectiveSettings.DiarizationEnabled,
+            DiarizationSource = diarizationSource,
             DiarizationMode = NormalizeDiarizationMode(effectiveSettings.DiarizationMode),
+            SpeakerRoleAttributionEnabled = effectiveSettings.SpeakerRoleAttributionEnabled,
         };
     }
 
@@ -168,7 +175,13 @@ public class UploadService : IUploadService
             LanguageCode = languageCode,
             AudioNormalizationEnabled = defaults.DefaultAudioNormalizationEnabled,
             DiarizationEnabled = defaults.DefaultDiarizationEnabled,
+            DiarizationSource = DiarizationSourcePolicy.NormalizeStored(
+                defaults.DefaultDiarizationSource,
+                engine,
+                model,
+                _engineRegistry),
             DiarizationMode = defaults.DefaultDiarizationMode,
+            SpeakerRoleAttributionEnabled = defaults.DefaultSpeakerRoleAttributionEnabled,
         };
     }
 
@@ -197,6 +210,20 @@ public class UploadService : IUploadService
                 supportedLanguages.Length == 0
                     ? "Unsupported fixed language for engine."
                     : $"Unsupported fixed language for engine {settings.Engine.Trim()}. Supported fixed languages: {supportedLanguages}.");
+        }
+
+        if (!DiarizationSourcePolicy.TryNormalize(settings.DiarizationSource, out var diarizationSource))
+            throw new ArgumentException("Invalid diarization source.");
+
+        if (!DiarizationSourcePolicy.IsSupported(
+                diarizationSource,
+                settings.Engine.Trim(),
+                settings.Model.Trim(),
+                _engineRegistry))
+        {
+            throw new ArgumentException(
+                $"{settings.Engine.Trim()} model {settings.Model.Trim()} does not support "
+                + $"{(diarizationSource == DiarizationSourcePolicy.Provider ? "provider" : "xAI")} diarization.");
         }
     }
 

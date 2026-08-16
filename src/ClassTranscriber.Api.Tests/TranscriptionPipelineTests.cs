@@ -5,6 +5,7 @@ using System.Text.Json;
 using ClassTranscriber.Api.Contracts;
 using ClassTranscriber.Api.Domain;
 using ClassTranscriber.Api.Persistence;
+using ClassTranscriber.Api.Transcription;
 using FluentAssertions;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.DependencyInjection;
@@ -556,6 +557,189 @@ public class TranscriptionPipelineTests : IAsyncLifetime
         retryResponse.StatusCode.Should().Be(HttpStatusCode.BadRequest);
     }
 
+    [Fact]
+    public async Task Upload_AcceptsXaiForVerifiedOpenRouterModel()
+    {
+        await using var factory = CreateXaiDiarizationFactory();
+        var folderId = await CreateFolder(factory.Client, "xAI Upload Folder");
+
+        var response = await UploadWithSettingsAsync(factory.Client, folderId, new
+        {
+            engine = "OpenRouter",
+            model = "openai/whisper-large-v3",
+            languageMode = "Auto",
+            languageCode = (string?)null,
+            audioNormalizationEnabled = true,
+            diarizationEnabled = true,
+            diarizationSource = "Xai",
+            diarizationMode = "Basic",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var result = await response.Content.ReadFromJsonAsync<JsonElement>();
+        var projectId = Guid.Parse(result.GetProperty("createdProjects")[0].GetProperty("id").GetString()!);
+        var project = await GetProject(factory.Client, projectId);
+        project.GetProperty("settings").GetProperty("diarizationSource").GetString().Should().Be("Xai");
+    }
+
+    [Theory]
+    [InlineData("openai/whisper-large-v3", "Bogus")]
+    [InlineData("deepgram/nova-3", "Xai")]
+    public async Task Upload_RejectsUnsupportedXaiSource(string model, string source)
+    {
+        await using var factory = CreateXaiDiarizationFactory();
+        var folderId = await CreateFolder(factory.Client, "Bad xAI Upload Folder");
+
+        var response = await UploadWithSettingsAsync(factory.Client, folderId, new
+        {
+            engine = "OpenRouter",
+            model,
+            languageMode = "Auto",
+            languageCode = (string?)null,
+            audioNormalizationEnabled = true,
+            diarizationEnabled = true,
+            diarizationSource = source,
+            diarizationMode = "Basic",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+        (await response.Content.ReadAsStringAsync()).Should().Contain("validation_error");
+    }
+
+    [Fact]
+    public async Task Retry_AcceptsXaiForVerifiedOpenRouterModel()
+    {
+        await using var factory = CreateXaiDiarizationFactory();
+        var folderId = await CreateFolder(factory.Client, "xAI Retry Folder");
+        var upload = await UploadWithSettingsAsync(factory.Client, folderId, new
+        {
+            engine = "OpenRouter",
+            model = "deepgram/nova-3",
+            languageMode = "Auto",
+            audioNormalizationEnabled = true,
+            diarizationEnabled = false,
+            diarizationSource = "Local",
+            diarizationMode = "Basic",
+        });
+        var result = await upload.Content.ReadFromJsonAsync<JsonElement>();
+        var projectId = Guid.Parse(result.GetProperty("createdProjects")[0].GetProperty("id").GetString()!);
+        await MarkProjectFailed(factory, projectId);
+
+        var response = await factory.Client.PostAsJsonAsync($"/api/projects/{projectId}/retry", new
+        {
+            settings = new
+            {
+                engine = "OpenRouter",
+                model = "openai/whisper-large-v3-turbo",
+                languageMode = "Auto",
+                languageCode = (string?)null,
+                audioNormalizationEnabled = true,
+                diarizationEnabled = true,
+                diarizationSource = "Xai",
+                diarizationMode = "Basic",
+            },
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.OK);
+        var project = await GetProject(factory.Client, projectId);
+        project.GetProperty("settings").GetProperty("diarizationSource").GetString().Should().Be("Xai");
+    }
+
+    [Fact]
+    public async Task Retry_RejectsUnknownDiarizationSource()
+    {
+        await using var factory = CreateXaiDiarizationFactory();
+        var folderId = await CreateFolder(factory.Client, "Bad xAI Retry Folder");
+        var upload = await UploadWithSettingsAsync(factory.Client, folderId, new
+        {
+            engine = "OpenRouter",
+            model = "deepgram/nova-3",
+            languageMode = "Auto",
+            audioNormalizationEnabled = true,
+            diarizationEnabled = false,
+            diarizationSource = "Local",
+            diarizationMode = "Basic",
+        });
+        var result = await upload.Content.ReadFromJsonAsync<JsonElement>();
+        var projectId = Guid.Parse(result.GetProperty("createdProjects")[0].GetProperty("id").GetString()!);
+        await MarkProjectFailed(factory, projectId);
+
+        var response = await factory.Client.PostAsJsonAsync($"/api/projects/{projectId}/retry", new
+        {
+            settings = new
+            {
+                engine = "OpenRouter",
+                model = "openai/whisper-large-v3",
+                languageMode = "Auto",
+                languageCode = (string?)null,
+                audioNormalizationEnabled = true,
+                diarizationEnabled = true,
+                diarizationSource = "Bogus",
+                diarizationMode = "Basic",
+            },
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Upload_RejectsXaiWhenDirectXaiApiKeyIsEmptyAndBaseUrlIsValidHttps()
+    {
+        await using var factory = SettingsEndpointTests.CreateUnavailableXaiDiarizationFactory();
+        var folderId = await CreateFolder(factory.Client, "Unavailable xAI Upload Folder");
+
+        var response = await UploadWithSettingsAsync(factory.Client, folderId, new
+        {
+            engine = "OpenRouter",
+            model = "openai/whisper-large-v3",
+            languageMode = "Auto",
+            languageCode = (string?)null,
+            audioNormalizationEnabled = true,
+            diarizationEnabled = true,
+            diarizationSource = "Xai",
+            diarizationMode = "Basic",
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
+    [Fact]
+    public async Task Retry_RejectsXaiWhenDirectXaiApiKeyIsEmptyAndBaseUrlIsValidHttps()
+    {
+        await using var factory = SettingsEndpointTests.CreateUnavailableXaiDiarizationFactory();
+        var folderId = await CreateFolder(factory.Client, "Unavailable xAI Retry Folder");
+        var upload = await UploadWithSettingsAsync(factory.Client, folderId, new
+        {
+            engine = "OpenRouter",
+            model = "openai/whisper-large-v3",
+            languageMode = "Auto",
+            audioNormalizationEnabled = true,
+            diarizationEnabled = false,
+            diarizationSource = "Local",
+            diarizationMode = "Basic",
+        });
+        var result = await upload.Content.ReadFromJsonAsync<JsonElement>();
+        var projectId = Guid.Parse(result.GetProperty("createdProjects")[0].GetProperty("id").GetString()!);
+        await MarkProjectFailed(factory, projectId);
+
+        var response = await factory.Client.PostAsJsonAsync($"/api/projects/{projectId}/retry", new
+        {
+            settings = new
+            {
+                engine = "OpenRouter",
+                model = "openai/whisper-large-v3",
+                languageMode = "Auto",
+                languageCode = (string?)null,
+                audioNormalizationEnabled = true,
+                diarizationEnabled = true,
+                diarizationSource = "Xai",
+                diarizationMode = "Basic",
+            },
+        });
+
+        response.StatusCode.Should().Be(HttpStatusCode.BadRequest);
+    }
+
     [Theory]
     [InlineData("queue")]
     [InlineData("retry")]
@@ -627,6 +811,14 @@ public class TranscriptionPipelineTests : IAsyncLifetime
         return folder.GetProperty("id").GetGuid();
     }
 
+    private static async Task<Guid> CreateFolder(HttpClient client, string name)
+    {
+        var response = await client.PostAsJsonAsync("/api/folders", new { name });
+        response.EnsureSuccessStatusCode();
+        var folder = await response.Content.ReadFromJsonAsync<JsonElement>();
+        return folder.GetProperty("id").GetGuid();
+    }
+
     private async Task<(Guid ProjectId, JsonElement Result)> UploadTestFile(Guid folderId, string fileName = "test.wav", bool autoQueue = false)
     {
         using var content = new MultipartFormDataContent();
@@ -661,9 +853,27 @@ public class TranscriptionPipelineTests : IAsyncLifetime
         return await _client.PostAsync("/api/uploads/batch", content);
     }
 
+    private static async Task<HttpResponseMessage> UploadWithSettingsAsync(HttpClient client, Guid folderId, object settings)
+    {
+        using var content = new MultipartFormDataContent();
+        content.Add(new StringContent(folderId.ToString()), "folderId");
+        content.Add(new StringContent(JsonSerializer.Serialize(settings)), "settings");
+        var fileContent = new ByteArrayContent(CreateMinimalWavBytesForTests());
+        fileContent.Headers.ContentType = new MediaTypeHeaderValue("audio/wav");
+        content.Add(fileContent, "files", "xai-settings-test.wav");
+        return await client.PostAsync("/api/uploads/batch", content);
+    }
+
     private async Task<JsonElement> GetProject(Guid projectId)
     {
         var response = await _client.GetAsync($"/api/projects/{projectId}");
+        response.EnsureSuccessStatusCode();
+        return await response.Content.ReadFromJsonAsync<JsonElement>();
+    }
+
+    private static async Task<JsonElement> GetProject(HttpClient client, Guid projectId)
+    {
+        var response = await client.GetAsync($"/api/projects/{projectId}");
         response.EnsureSuccessStatusCode();
         return await response.Content.ReadFromJsonAsync<JsonElement>();
     }
@@ -679,6 +889,32 @@ public class TranscriptionPipelineTests : IAsyncLifetime
         project.UpdatedAtUtc = DateTime.UtcNow;
         await db.SaveChangesAsync();
     }
+
+    private static async Task MarkProjectFailed(TestWebApplicationFactory factory, Guid projectId)
+    {
+        await using var scope = factory.Services.CreateAsyncScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var project = await db.Projects.FirstAsync(p => p.Id == projectId);
+        project.Status = ProjectStatus.Failed;
+        project.ErrorMessage = "Simulated failure";
+        project.FailedAtUtc = DateTime.UtcNow;
+        project.UpdatedAtUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+    }
+
+    private static TestWebApplicationFactory CreateXaiDiarizationFactory()
+        => new(
+        [
+            new NoOpTranscriptionEngine(
+                "OpenRouter",
+                ["openai/whisper-large-v3", "openai/whisper-large-v3-turbo", "deepgram/nova-3"],
+                wordTimestampModels: ["openai/whisper-large-v3", "openai/whisper-large-v3-turbo"]),
+            new NoOpTranscriptionEngine(
+                "Xai",
+                ["grok-stt-1.0"],
+                providerDiarizationModels: ["grok-stt-1.0"],
+                wordTimestampModels: ["grok-stt-1.0"]),
+        ]);
 
     /// <summary>
     /// Creates a minimal valid WAV file header (44 bytes, 0 samples).

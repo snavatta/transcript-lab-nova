@@ -8,7 +8,9 @@ public sealed record GlobalSettingsDto
     public string? DefaultLanguageCode { get; init; }
     public required bool DefaultAudioNormalizationEnabled { get; init; }
     public required bool DefaultDiarizationEnabled { get; init; }
+    public string DefaultDiarizationSource { get; init; } = "Local";
     public required string DefaultDiarizationMode { get; init; }
+    public bool DefaultSpeakerRoleAttributionEnabled { get; init; }
     public required string DefaultTranscriptViewMode { get; init; }
 }
 
@@ -16,11 +18,19 @@ public sealed record TranscriptionEngineOptionDto
 {
     public required string Engine { get; init; }
     public required string[] Models { get; init; }
+    public required string[] ProviderDiarizationModels { get; init; }
+    public required string[] WordTimestampModels { get; init; }
 }
 
 public sealed record TranscriptionOptionsDto
 {
     public required TranscriptionEngineOptionDto[] Engines { get; init; }
+    public bool SpeakerRoleAttributionAvailable { get; init; }
+    public string SpeakerRoleAttributionModel { get; init; } = string.Empty;
+    public string? RecommendedHostedEngine { get; init; }
+    public string? RecommendedHostedModel { get; init; }
+    public bool XaiDiarizationAvailable { get; init; }
+    public string XaiDiarizationModel { get; init; } = "grok-stt-1.0";
 }
 
 public sealed record TranscriptionModelCatalogDto
@@ -56,6 +66,8 @@ public sealed record UpdateGlobalSettingsRequest
     public string? DefaultLanguageCode { get; init; }
     public required bool DefaultAudioNormalizationEnabled { get; init; }
     public required bool DefaultDiarizationEnabled { get; init; }
+    public string DefaultDiarizationSource { get; init; } = "Local";
     public required string DefaultDiarizationMode { get; init; }
+    public bool DefaultSpeakerRoleAttributionEnabled { get; init; }
     public required string DefaultTranscriptViewMode { get; init; }
 }

@@ -1,7 +1,7 @@
 using System.Net;
-using System.Net.Http.Json;
 using System.Text.Json;
 using System.Text.Json.Serialization;
+using ClassTranscriber.Api.Transcription;
 using Microsoft.Extensions.AI;
 
 namespace ClassTranscriber.Api.Transcription.SpeechToText;
@@ -17,12 +17,23 @@ internal sealed class OpenAiVerboseTranscriptionResponse
     [JsonPropertyName("duration")] public double Duration { get; set; }
     [JsonPropertyName("text")] public string? Text { get; set; }
     [JsonPropertyName("segments")] public OpenAiTranscriptionSegment[]? Segments { get; set; }
+    [JsonPropertyName("words")] public OpenAiTranscriptionWord[]? Words { get; set; }
     [JsonPropertyName("usage")] public OpenAiTranscriptionUsage? Usage { get; set; }
+}
+
+internal sealed class OpenAiTranscriptionWord
+{
+    [JsonPropertyName("word")] public string? Word { get; set; }
+    [JsonPropertyName("text")] public string? Text { get; set; }
+    [JsonPropertyName("start")] public double? Start { get; set; }
+    [JsonPropertyName("end")] public double? End { get; set; }
+    [JsonIgnore] public string Token => Word ?? Text ?? string.Empty;
 }
 
 internal sealed class OpenAiTranscriptionUsage
 {
     [JsonPropertyName("seconds")] public double? Seconds { get; set; }
+    [JsonPropertyName("cost")] public decimal? Cost { get; set; }
 }
 
 internal sealed class OpenAiTranscriptionSegment
@@ -33,14 +44,29 @@ internal sealed class OpenAiTranscriptionSegment
     [JsonPropertyName("text")] public string Text { get; set; } = string.Empty;
 }
 
+internal enum OpenAiTranscriptionErrorKind
+{
+    Unknown,
+    Multipart,
+    ResponseFormat,
+    WordTimestamps,
+    AudioFormat,
+    AudioDuration,
+    AudioSize,
+    Model,
+}
+
 internal sealed class OpenAiTranscriptionException(
     HttpStatusCode statusCode,
-    bool responseFormatRejected,
-    string message)
+    OpenAiTranscriptionErrorKind errorKind,
+    string message,
+    TimeSpan? retryAfter = null)
     : InvalidOperationException(message)
 {
     public HttpStatusCode StatusCode { get; } = statusCode;
-    public bool ResponseFormatRejected { get; } = responseFormatRejected;
+    public OpenAiTranscriptionErrorKind ErrorKind { get; } = errorKind;
+    public bool ResponseFormatRejected => ErrorKind == OpenAiTranscriptionErrorKind.ResponseFormat;
+    public TimeSpan? RetryAfter { get; } = retryAfter;
 }
 
 // ---------------------------------------------------------------------------
@@ -54,7 +80,7 @@ internal sealed class OpenAiTranscriptionException(
 internal static class OpenAiAudioTranscriptionHelper
 {
     /// <summary>
-    /// Posts a WAV stream as a multipart form request to <paramref name="url"/> and returns
+    /// Posts an audio stream as a multipart form request to <paramref name="url"/> and returns
     /// a <see cref="SpeechToTextResponse"/> whose <see cref="SpeechToTextResponse.RawRepresentation"/>
     /// is the parsed <see cref="OpenAiVerboseTranscriptionResponse"/>.
     /// </summary>
@@ -69,40 +95,82 @@ internal static class OpenAiAudioTranscriptionHelper
         string? device = null,
         string responseFormat = "verbose_json",
         bool leaveAudioStreamOpen = false,
-        bool includeProviderErrorDetail = true)
+        bool includeProviderErrorDetail = true,
+        string fileName = "audio.wav",
+        string mediaType = "audio/wav",
+        bool requestWordTimestamps = false)
     {
         using var content = new MultipartFormDataContent();
+        var boundary = content.Headers.ContentType!.Parameters.Single(parameter => parameter.Name == "boundary");
+        boundary.Value = boundary.Value!.Trim('"');
 
         var streamContent = new StreamContent(
             leaveAudioStreamOpen ? new LeaveOpenStream(audioStream) : audioStream);
-        streamContent.Headers.ContentType = new("audio/wav");
-        content.Add(streamContent, "file", "audio.wav");
+        streamContent.Headers.ContentType = new(mediaType);
+        content.Add(streamContent, "file", fileName);
+        streamContent.Headers.ContentDisposition!.FileNameStar = null;
         content.Add(new StringContent(modelId), "model");
         content.Add(new StringContent(responseFormat), "response_format");
+        if (requestWordTimestamps)
+            content.Add(new StringContent("word"), "timestamp_granularities[]");
         if (!string.IsNullOrWhiteSpace(language))
             content.Add(new StringContent(language), "language");
         if (!string.IsNullOrWhiteSpace(device))
             content.Add(new StringContent(device), "device");
 
+        foreach (var part in content)
+        {
+            var disposition = part.Headers.ContentDisposition!;
+            var partName = disposition.Name!.Trim('"');
+            var partFileName = disposition.FileName?.Trim('"');
+            var serializedDisposition = partFileName is null
+                ? $"form-data; name=\"{partName}\""
+                : $"form-data; name=\"{partName}\"; filename=\"{partFileName}\"";
+            part.Headers.Remove("Content-Disposition");
+            part.Headers.TryAddWithoutValidation("Content-Disposition", serializedDisposition);
+        }
+
         using var request = new HttpRequestMessage(HttpMethod.Post, url) { Content = content };
         if (!string.IsNullOrWhiteSpace(apiKey))
             request.Headers.Authorization = new("Bearer", apiKey);
 
-        using var response = await client.SendAsync(request, cancellationToken);
+        using var response = await client.SendAsync(
+            request,
+            HttpCompletionOption.ResponseHeadersRead,
+            cancellationToken);
 
         if (!response.IsSuccessStatusCode)
         {
-            var detail = await response.Content.ReadAsStringAsync(cancellationToken);
+            string detail;
+            try
+            {
+                detail = await BoundedHttpContentReader.ReadStringAsync(
+                    response.Content,
+                    "OpenAI-compatible transcription API response exceeded the maximum allowed size.",
+                    cancellationToken);
+            }
+            catch (ProviderResponseTooLargeException exception)
+            {
+                throw new OpenAiTranscriptionException(
+                    response.StatusCode,
+                    OpenAiTranscriptionErrorKind.Unknown,
+                    exception.Message,
+                    GetRetryAfter(response));
+            }
             var message = $"OpenAI-compatible transcription API returned HTTP {(int)response.StatusCode}.";
             if (includeProviderErrorDetail)
                 message = $"OpenAI-compatible transcription API returned HTTP {(int)response.StatusCode}: {NormalizeErrorDetail(detail)}";
             throw new OpenAiTranscriptionException(
                 response.StatusCode,
-                IsResponseFormatRejection(detail),
-                message);
+                ClassifyError(detail),
+                message,
+                GetRetryAfter(response));
         }
 
-        var parsed = await response.Content.ReadFromJsonAsync<OpenAiVerboseTranscriptionResponse>(cancellationToken);
+        var parsed = await BoundedHttpContentReader.ReadJsonAsync<OpenAiVerboseTranscriptionResponse>(
+            response.Content,
+            "OpenAI-compatible transcription API response exceeded the maximum allowed size.",
+            cancellationToken);
         if (parsed is null)
             throw new InvalidOperationException("OpenAI-compatible transcription API returned an empty response.");
 
@@ -115,50 +183,68 @@ internal static class OpenAiAudioTranscriptionHelper
         return speechResponse;
     }
 
-    private static bool IsResponseFormatRejection(string detail)
+    private static TimeSpan? GetRetryAfter(HttpResponseMessage response)
     {
-        var trimmed = detail.Trim();
-        if (string.IsNullOrWhiteSpace(trimmed))
-            return false;
+        var retryAfter = response.Headers.RetryAfter;
+        if (retryAfter?.Delta is { } delta)
+            return delta > TimeSpan.Zero ? delta : TimeSpan.Zero;
+        if (retryAfter?.Date is not { } date)
+            return null;
 
-        try
-        {
-            var payload = JsonSerializer.Deserialize<OpenAiErrorResponse>(trimmed);
-            var providerMessage = payload?.Detail ?? payload?.Error?.Message;
-            if (!string.IsNullOrWhiteSpace(providerMessage))
-                return ContainsResponseFormatName(providerMessage);
-        }
-        catch (JsonException)
-        {
-            return ContainsResponseFormatName(trimmed);
-        }
-
-        return ContainsResponseFormatName(trimmed);
+        var delay = date - DateTimeOffset.UtcNow;
+        return delay > TimeSpan.Zero ? delay : TimeSpan.Zero;
     }
 
-    private static bool ContainsResponseFormatName(string value)
-        => value.Contains("response_format", StringComparison.OrdinalIgnoreCase)
-            || value.Contains("verbose_json", StringComparison.OrdinalIgnoreCase);
+    private static OpenAiTranscriptionErrorKind ClassifyError(string detail)
+    {
+        if (ContainsAny(detail, "multipart", "form-data body"))
+            return OpenAiTranscriptionErrorKind.Multipart;
+        if (ContainsAny(detail, "timestamp_granularities", "word timestamp"))
+            return OpenAiTranscriptionErrorKind.WordTimestamps;
+        if (ContainsAny(detail, "response_format", "verbose_json"))
+            return OpenAiTranscriptionErrorKind.ResponseFormat;
+        if (ContainsAny(detail, "flac", "audio format", "file format", "file type", "codec", "mime"))
+            return OpenAiTranscriptionErrorKind.AudioFormat;
+        if (ContainsAny(detail, "duration", "audio length", "too long"))
+            return OpenAiTranscriptionErrorKind.AudioDuration;
+        if (ContainsAny(detail, "file size", "too large", "25mb", "25 mb", "payload too large"))
+            return OpenAiTranscriptionErrorKind.AudioSize;
+        if (detail.Contains("no endpoints", StringComparison.OrdinalIgnoreCase)
+            || (detail.Contains("model", StringComparison.OrdinalIgnoreCase)
+                && ContainsAny(detail, "not found", "unknown", "invalid", "unsupported", "unavailable")))
+        {
+            return OpenAiTranscriptionErrorKind.Model;
+        }
 
-    private static string NormalizeErrorDetail(string detail)
+        return OpenAiTranscriptionErrorKind.Unknown;
+    }
+
+    private static bool ContainsAny(string value, params string[] candidates)
+        => candidates.Any(candidate => value.Contains(candidate, StringComparison.OrdinalIgnoreCase));
+
+    private static string ExtractProviderMessage(string detail)
     {
         var trimmed = detail.Trim();
         if (string.IsNullOrWhiteSpace(trimmed))
-            return "The endpoint returned an empty error response.";
+            return string.Empty;
 
         try
         {
             var payload = JsonSerializer.Deserialize<OpenAiErrorResponse>(trimmed);
-            var providerMessage = payload?.Detail ?? payload?.Error?.Message;
-            if (!string.IsNullOrWhiteSpace(providerMessage))
-                return providerMessage.Trim();
+            return (payload?.Detail ?? payload?.Error?.Message)?.Trim() ?? trimmed;
         }
         catch (JsonException)
         {
             return trimmed;
         }
+    }
 
-        return trimmed;
+    private static string NormalizeErrorDetail(string detail)
+    {
+        var providerMessage = ExtractProviderMessage(detail);
+        if (string.IsNullOrWhiteSpace(providerMessage))
+            return "The endpoint returned an empty error response.";
+        return providerMessage;
     }
 }
 

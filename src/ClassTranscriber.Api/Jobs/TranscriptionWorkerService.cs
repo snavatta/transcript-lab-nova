@@ -218,12 +218,73 @@ public class TranscriptionWorkerService : BackgroundService, IActiveJobCancellat
 
             // Transcribe
             var transcriptionStopwatch = Stopwatch.StartNew();
-            var result = await transcriptionEngine.TranscribeAsync(preparedAudioPath, project.Settings, jobToken);
+            var result = transcriptionEngine is IOpenRouterChunkProgressTranscriptionEngine checkpointEngine
+                ? await checkpointEngine.TranscribeAsync(
+                    preparedAudioPath,
+                    project.Settings,
+                    async (progress, _) =>
+                    {
+                        await UpsertTranscriptAsync(db, project, progress.CumulativeResult, CancellationToken.None);
+                        await db.SaveChangesAsync(CancellationToken.None);
+                    },
+                    jobToken)
+                : await transcriptionEngine.TranscribeAsync(preparedAudioPath, project.Settings, jobToken);
             transcriptionStopwatch.Stop();
             transcriptionElapsedMs = transcriptionStopwatch.ElapsedMilliseconds;
             jobToken.ThrowIfCancellationRequested();
 
-            if (project.Settings.DiarizationEnabled && result.Segments.Length > 0)
+            if (project.Settings.DiarizationEnabled
+                && string.Equals(project.Settings.DiarizationSource, "Xai", StringComparison.OrdinalIgnoreCase))
+            {
+                if (!string.Equals(project.Settings.Engine, "OpenRouter", StringComparison.OrdinalIgnoreCase)
+                    || !transcriptionEngineRegistry.SupportsWordTimestamps(project.Settings.Engine, project.Settings.Model)
+                    || result.Words.Count == 0)
+                {
+                    throw new InvalidOperationException(
+                        "External xAI diarization requires a verified OpenRouter word-timestamp model.");
+                }
+
+                XaiDiarizationResult diarization;
+                try
+                {
+                    var xaiDiarization = scope.ServiceProvider.GetRequiredService<IXaiDiarizationService>();
+                    diarization = await xaiDiarization.DiarizeAsync(
+                        preparedAudioPath,
+                        result.DurationMs ?? project.DurationMs,
+                        jobToken);
+                }
+                catch (OperationCanceledException)
+                {
+                    throw;
+                }
+                catch (Exception)
+                {
+                    throw new InvalidOperationException("External xAI diarization failed.");
+                }
+
+                result = XaiSpeakerTimingMerge.Apply(result, diarization.Intervals) with
+                {
+                    ProcessingMetadata = (result.ProcessingMetadata ?? new TranscriptionProcessingMetadata(
+                        project.Settings.Engine,
+                        project.Settings.Model,
+                        0,
+                        false)) with
+                    {
+                        NativeDiarizationUsed = false,
+                        DiarizationSource = "Xai",
+                        DiarizationProvider = "xAI",
+                        DiarizationModel = diarization.Model,
+                        DiarizationRequestCount = diarization.RequestCount,
+                        DiarizationCostMicroUsd = diarization.CostMicroUsd,
+                        DiarizationRateMicroUsdPerHour = diarization.RateMicroUsdPerHour,
+                        DiarizationCostClassification = diarization.CostClassification,
+                    },
+                };
+            }
+
+            if (project.Settings.DiarizationEnabled
+                && result.Segments.Length > 0
+                && string.Equals(project.Settings.DiarizationSource, "Local", StringComparison.OrdinalIgnoreCase))
             {
                 try
                 {
@@ -242,21 +303,32 @@ public class TranscriptionWorkerService : BackgroundService, IActiveJobCancellat
                 }
             }
 
-            // Store transcript
-            var transcript = new Transcript
+            if (project.Settings.SpeakerRoleAttributionEnabled
+                && result.Segments.Any(segment => !string.IsNullOrWhiteSpace(segment.Speaker)))
             {
-                Id = Guid.NewGuid(),
-                ProjectId = project.Id,
-                PlainText = result.PlainText,
-                StructuredSegmentsJson = JsonSerializer.Serialize(result.Segments),
-                DetectedLanguage = result.DetectedLanguage,
-                DurationMs = result.DurationMs,
-                SegmentCount = result.Segments.Length,
-                CreatedAtUtc = DateTime.UtcNow,
-                UpdatedAtUtc = DateTime.UtcNow,
-            };
+                var roleService = scope.ServiceProvider.GetService<ISpeakerRoleAttributionService>();
+                var roleResult = roleService is null
+                    ? new SpeakerRoleAttributionResult(result.Segments, "Unavailable")
+                    : await roleService.AttributeAsync(result.Segments, jobToken);
+                result = result with
+                {
+                    Segments = roleResult.Segments,
+                    ProcessingMetadata = (result.ProcessingMetadata ?? new TranscriptionProcessingMetadata(
+                        project.Settings.Engine,
+                        project.Settings.Model,
+                        0,
+                        false)) with
+                    {
+                        RoleAttributionModel = roleService?.Model,
+                        RoleAttributionStatus = roleResult.Status,
+                        RoleAttributionPromptTokens = roleResult.PromptTokens,
+                        RoleAttributionOutputTokens = roleResult.OutputTokens,
+                        RoleAttributionCostMicroUsd = roleResult.CostMicroUsd,
+                    },
+                };
+            }
 
-            db.Transcripts.Add(transcript);
+            await UpsertTranscriptAsync(db, project, result, CancellationToken.None);
 
             // Update project
             project.Status = ProjectStatus.Completed;
@@ -351,6 +423,55 @@ public class TranscriptionWorkerService : BackgroundService, IActiveJobCancellat
             return null;
 
         return Math.Round((double)elapsedMs / audioDurationMs.Value, 2);
+    }
+
+    private static async Task UpsertTranscriptAsync(
+        AppDbContext db,
+        Project project,
+        TranscriptionResult result,
+        CancellationToken ct)
+    {
+        var transcript = db.Transcripts.Local.FirstOrDefault(candidate => candidate.ProjectId == project.Id)
+            ?? await db.Transcripts.FirstOrDefaultAsync(candidate => candidate.ProjectId == project.Id, ct);
+        var now = DateTime.UtcNow;
+        if (transcript is null)
+        {
+            transcript = new Transcript
+            {
+                Id = Guid.NewGuid(),
+                ProjectId = project.Id,
+                CreatedAtUtc = now,
+            };
+            db.Transcripts.Add(transcript);
+        }
+
+        var metadata = result.ProcessingMetadata;
+        transcript.PlainText = result.PlainText;
+        transcript.StructuredSegmentsJson = JsonSerializer.Serialize(result.Segments);
+        transcript.DetectedLanguage = result.DetectedLanguage;
+        transcript.DurationMs = result.DurationMs;
+        transcript.SegmentCount = result.Segments.Length;
+        transcript.HostedSttProvider = metadata?.SttProvider;
+        transcript.HostedSttModel = metadata?.SttModel;
+        transcript.HostedRequestCount = metadata?.RequestCount;
+        transcript.NativeDiarizationUsed = metadata?.NativeDiarizationUsed;
+        transcript.HostedSttCostMicroUsd = metadata?.SttCostMicroUsd;
+        transcript.HostedSttRateMicroUsdPerHour = metadata?.SttRateMicroUsdPerHour;
+        transcript.HostedSttCostClassification = metadata?.SttCostClassification;
+        transcript.DiarizationSource = metadata?.DiarizationSource
+            ?? (project.Settings.DiarizationEnabled ? project.Settings.DiarizationSource : null);
+        transcript.HostedDiarizationProvider = metadata?.DiarizationProvider;
+        transcript.HostedDiarizationModel = metadata?.DiarizationModel;
+        transcript.HostedDiarizationRequestCount = metadata?.DiarizationRequestCount;
+        transcript.HostedDiarizationCostMicroUsd = metadata?.DiarizationCostMicroUsd;
+        transcript.HostedDiarizationRateMicroUsdPerHour = metadata?.DiarizationRateMicroUsdPerHour;
+        transcript.HostedDiarizationCostClassification = metadata?.DiarizationCostClassification;
+        transcript.SpeakerRoleAttributionModel = metadata?.RoleAttributionModel;
+        transcript.SpeakerRoleAttributionStatus = metadata?.RoleAttributionStatus;
+        transcript.SpeakerRolePromptTokens = metadata?.RoleAttributionPromptTokens;
+        transcript.SpeakerRoleOutputTokens = metadata?.RoleAttributionOutputTokens;
+        transcript.SpeakerRoleCostMicroUsd = metadata?.RoleAttributionCostMicroUsd;
+        transcript.UpdatedAtUtc = now;
     }
 
     private async Task DrainCompletedTasksAsync(List<Task> runningTasks, bool waitForAll = false)

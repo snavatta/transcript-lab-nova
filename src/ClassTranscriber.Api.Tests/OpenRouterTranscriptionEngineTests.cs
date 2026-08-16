@@ -1,15 +1,14 @@
 using System.Net;
 using System.Net.Http.Json;
+using System.Collections.Concurrent;
 using ClassTranscriber.Api.Domain;
 using ClassTranscriber.Api.Transcription;
-using ClassTranscriber.Api.Transcription.SpeechToText;
 using FluentAssertions;
-using Microsoft.Extensions.Logging.Abstractions;
-using Microsoft.Extensions.Options;
+using Microsoft.Extensions.Logging;
 
 namespace ClassTranscriber.Api.Tests;
 
-public sealed class OpenRouterTranscriptionEngineTests
+public sealed class OpenRouterTranscriptionEngineTests : OpenRouterTestFixture
 {
     [Fact]
     public void GetAvailabilityError_ReturnsConfigurationError_WhenApiKeyIsMissing()
@@ -17,9 +16,7 @@ public sealed class OpenRouterTranscriptionEngineTests
         var factory = new RecordingHttpClientFactory(_ => new HttpResponseMessage(HttpStatusCode.OK));
         var engine = CreateEngine(factory, apiKey: string.Empty);
 
-        var error = engine.GetAvailabilityError();
-
-        error.Should().Contain("Transcription:OpenRouter:ApiKey");
+        engine.GetAvailabilityError().Should().Contain("Transcription:OpenRouter:ApiKey");
     }
 
     [Fact]
@@ -28,9 +25,7 @@ public sealed class OpenRouterTranscriptionEngineTests
         var factory = new RecordingHttpClientFactory(_ => new HttpResponseMessage(HttpStatusCode.OK));
         var engine = CreateEngine(factory, baseUrl: "http://openrouter.ai/api/v1");
 
-        var error = engine.GetAvailabilityError();
-
-        error.Should().Contain("absolute HTTPS URL");
+        engine.GetAvailabilityError().Should().Contain("absolute HTTPS URL");
     }
 
     [Fact]
@@ -49,9 +44,7 @@ public sealed class OpenRouterTranscriptionEngineTests
         });
         var engine = CreateEngine(factory);
 
-        var models = engine.SupportedModels;
-
-        models.Should().Equal("openai/whisper-large-v3", "openai/gpt-4o-mini-transcribe");
+        engine.SupportedModels.Should().Equal("openai/whisper-large-v3", "openai/gpt-4o-mini-transcribe");
         factory.Requests.Should().ContainSingle();
         factory.Requests[0].RequestUri.Should().Be("https://openrouter.ai/api/v1/models?output_modalities=transcription");
     }
@@ -62,9 +55,56 @@ public sealed class OpenRouterTranscriptionEngineTests
         var factory = new RecordingHttpClientFactory(_ => new HttpResponseMessage(HttpStatusCode.ServiceUnavailable));
         var engine = CreateEngine(factory);
 
-        var models = engine.SupportedModels;
+        engine.SupportedModels.Should().Equal("openai/whisper-large-v3");
+    }
 
-        models.Should().Equal("openai/whisper-large-v3");
+    [Theory]
+    [InlineData(true)]
+    [InlineData(false)]
+    public void SupportedModels_OversizedCatalog_IsBoundedAndUsesFallback(bool declareLength)
+    {
+        var oversized = new OversizedProviderResponseContent(declareLength);
+        var factory = new RecordingHttpClientFactory(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = oversized,
+        });
+        var engine = CreateEngine(factory);
+
+        engine.SupportedModels.Should().Equal("openai/whisper-large-v3");
+        oversized.Source.BytesRead.Should().Be(
+            declareLength ? 0 : OversizedProviderResponseContent.ResponseLimitBytes + 1);
+        factory.Requests.Should().ContainSingle();
+    }
+
+    [Fact]
+    public async Task TranscribeAsync_StartLog_DoesNotExposeAbsoluteAudioPath()
+    {
+        var sensitivePath = Path.Combine(CreateTempDirectory(), "private-customer-recording.wav");
+        await File.WriteAllBytesAsync(sensitivePath, [1, 2, 3]);
+        var entries = new ConcurrentQueue<CapturedLogEntry>();
+        using var loggerFactory = LoggerFactory.Create(builder =>
+            builder.AddProvider(new CapturingLoggerProvider(entries)));
+        var factory = new RecordingHttpClientFactory(_ => new HttpResponseMessage(HttpStatusCode.OK)
+        {
+            Content = JsonContent.Create(new { text = "ok", duration = 1.0 }),
+        });
+        var engine = CreateEngine(
+            factory,
+            logger: loggerFactory.CreateLogger<OpenRouterTranscriptionEngine>());
+
+        await engine.TranscribeAsync(sensitivePath, new ProjectSettings
+        {
+            Engine = "OpenRouter",
+            Model = "openai/gpt-4o-mini-transcribe",
+            LanguageMode = "Auto",
+        });
+
+        var start = entries.Should().ContainSingle(entry => entry.Message.StartsWith("Starting OpenRouter"))
+            .Subject;
+        start.Message.Should().NotContain(sensitivePath).And.NotContain("private-customer-recording.wav");
+        start.Properties.Should().NotContainKey("AudioPath");
+        start.Properties.Should().Contain("Engine", "OpenRouter");
+        start.Properties.Should().Contain("Model", "openai/gpt-4o-mini-transcribe");
     }
 
     [Fact]
@@ -82,7 +122,6 @@ public sealed class OpenRouterTranscriptionEngineTests
             ReadPartAsync(multipart, "model").GetAwaiter().GetResult().Should().Be("openai/gpt-4o-mini-transcribe");
             ReadPartAsync(multipart, "language").GetAwaiter().GetResult().Should().Be("es");
             ReadPartAsync(multipart, "response_format").GetAwaiter().GetResult().Should().Be("verbose_json");
-
             return new HttpResponseMessage(HttpStatusCode.OK)
             {
                 Content = JsonContent.Create(new
@@ -91,9 +130,14 @@ public sealed class OpenRouterTranscriptionEngineTests
                     language = "es",
                     duration = 2.5,
                     text = "hola mundo",
-                    segments = new[]
+                    segments = new[] { new { id = 0, start = 0.25, end = 2.5, text = "hola mundo" } },
+                    words = new object[]
                     {
-                        new { id = 0, start = 0.25, end = 2.5, text = "hola mundo" },
+                        new { word = "hola", start = 0.25, end = 0.75 },
+                        new { text = "mundo", start = 0.80, end = 1.40 },
+                        new { word = "missing-start", end = 1.50 },
+                        new { word = "null-end", start = 1.50, end = (double?)null },
+                        new { word = "negative", start = -1.0, end = 0.25 },
                     },
                 }),
             };
@@ -114,165 +158,55 @@ public sealed class OpenRouterTranscriptionEngineTests
         result.Segments.Should().ContainSingle();
         result.Segments[0].StartMs.Should().Be(250);
         result.Segments[0].EndMs.Should().Be(2500);
+        result.Words.Should().Equal(
+            new TranscriptionWord("hola", 250, 750),
+            new TranscriptionWord("mundo", 800, 1400));
     }
 
     [Fact]
-    public async Task TranscribeAsync_RetriesWithJson_WhenProviderRejectsVerboseJson()
+    public async Task MissingWordsRemainEmpty()
     {
         var audioPath = Path.Combine(CreateTempDirectory(), "lecture.wav");
         await File.WriteAllBytesAsync(audioPath, [1, 2, 3]);
-        var responseFormats = new List<string>();
-        var factory = new RecordingHttpClientFactory(request =>
+        var factory = new RecordingHttpClientFactory(_ => new HttpResponseMessage(HttpStatusCode.OK)
         {
-            var multipart = request.Content.Should().BeOfType<MultipartFormDataContent>().Subject;
-            var responseFormat = ReadPartAsync(multipart, "response_format").GetAwaiter().GetResult();
-            responseFormats.Add(responseFormat);
-            return responseFormat == "verbose_json"
-                ? new HttpResponseMessage(HttpStatusCode.BadRequest)
-                {
-                    Content = JsonContent.Create(new { error = new { message = "response_format 'verbose_json' is unsupported" } }),
-                }
-                : new HttpResponseMessage(HttpStatusCode.OK)
-                {
-                    Content = JsonContent.Create(new
-                    {
-                        text = "provider fallback",
-                        usage = new { seconds = 4.2 },
-                    }),
-                };
+            Content = JsonContent.Create(new { text = "plain response", duration = 2.0 }),
         });
         var engine = CreateEngine(factory);
 
         var result = await engine.TranscribeAsync(audioPath, new ProjectSettings
         {
             Engine = "OpenRouter",
-            Model = "deepgram/nova-3",
+            Model = "openai/gpt-4o-mini-transcribe",
             LanguageMode = "Auto",
         });
 
-        responseFormats.Should().Equal("verbose_json", "json");
-        result.PlainText.Should().Be("provider fallback");
-        result.Segments.Should().ContainSingle();
-        result.Segments[0].EndMs.Should().Be(4200);
-        result.DurationMs.Should().Be(4200);
+        result.Words.Should().BeEmpty();
     }
 
     [Fact]
-    public async Task TranscribeAsync_DoesNotRetryUnrelatedBadRequests()
+    public async Task SttCostOverflowFails()
     {
         var audioPath = Path.Combine(CreateTempDirectory(), "lecture.wav");
         await File.WriteAllBytesAsync(audioPath, [1, 2, 3]);
-        var factory = new RecordingHttpClientFactory(_ => new HttpResponseMessage(HttpStatusCode.BadRequest)
+        var factory = new RecordingHttpClientFactory(_ => new HttpResponseMessage(HttpStatusCode.OK)
         {
-            Content = JsonContent.Create(new { error = new { message = "Invalid language" } }),
+            Content = JsonContent.Create(new
+            {
+                text = "cost overflow",
+                duration = 2.0,
+                usage = new { cost = decimal.MaxValue },
+            }),
         });
         var engine = CreateEngine(factory);
 
         var act = () => engine.TranscribeAsync(audioPath, new ProjectSettings
         {
             Engine = "OpenRouter",
-            Model = "deepgram/nova-3",
-            LanguageMode = "Fixed",
-            LanguageCode = "invalid",
-        });
-
-        await act.Should().ThrowAsync<InvalidOperationException>();
-        factory.Requests.Should().ContainSingle();
-    }
-
-    [Fact]
-    public async Task TranscribeAsync_DoesNotLeakApiKey_WhenOpenRouterReturnsAnError()
-    {
-        const string apiKey = "sensitive-openrouter-key";
-        var audioPath = Path.Combine(CreateTempDirectory(), "lecture.wav");
-        await File.WriteAllBytesAsync(audioPath, [1, 2, 3]);
-        var factory = new RecordingHttpClientFactory(_ => new HttpResponseMessage(HttpStatusCode.Unauthorized)
-        {
-            Content = JsonContent.Create(new { error = new { message = $"Invalid API key: {apiKey}" } }),
-        });
-        var engine = CreateEngine(factory, apiKey);
-
-        var act = () => engine.TranscribeAsync(audioPath, new ProjectSettings
-        {
-            Engine = "OpenRouter",
-            Model = "openai/whisper-large-v3",
+            Model = "openai/gpt-4o-mini-transcribe",
             LanguageMode = "Auto",
         });
 
-        var exception = await act.Should().ThrowAsync<InvalidOperationException>();
-        exception.Which.Message.Should().NotContain(apiKey);
-        factory.Requests.Should().ContainSingle();
-        factory.Requests[0].AuthorizationParameter.Should().Be(apiKey);
-    }
-
-    private static OpenRouterTranscriptionEngine CreateEngine(
-        RecordingHttpClientFactory factory,
-        string apiKey = "test-openrouter-key",
-        string baseUrl = "https://openrouter.ai/api/v1")
-    {
-        factory.AuthorizationParameter = apiKey;
-        var options = Options.Create(new OpenRouterOptions
-        {
-            BaseUrl = baseUrl,
-            ApiKey = apiKey,
-            FallbackModels = ["openai/whisper-large-v3"],
-        });
-        var client = new OpenRouterSpeechToTextClient(factory);
-        return new OpenRouterTranscriptionEngine(
-            options,
-            client,
-            factory,
-            NullLogger<OpenRouterTranscriptionEngine>.Instance);
-    }
-
-    private static async Task<string> ReadPartAsync(MultipartFormDataContent content, string name)
-    {
-        var part = content.Single(item => item.Headers.ContentDisposition?.Name?.Trim('"') == name);
-        return await part.ReadAsStringAsync();
-    }
-
-    private static string CreateTempDirectory()
-    {
-        var path = Path.Combine(Path.GetTempPath(), $"transcriptlab-openrouter-tests-{Guid.NewGuid():N}");
-        Directory.CreateDirectory(path);
-        return path;
-    }
-
-    private sealed class RecordingHttpClientFactory(
-        Func<HttpRequestMessage, HttpResponseMessage> createResponse) : IHttpClientFactory
-    {
-        public List<RecordedRequest> Requests { get; } = [];
-        public string AuthorizationParameter { get; set; } = "test-openrouter-key";
-
-        public HttpClient CreateClient(string name)
-            => new(new RecordingHttpMessageHandler(request =>
-            {
-                Requests.Add(new RecordedRequest(
-                    request.Method,
-                    request.RequestUri?.ToString(),
-                    request.Headers.Authorization?.Parameter));
-                return createResponse(request);
-            }))
-            {
-                BaseAddress = new Uri("https://openrouter.ai/api/v1/"),
-                DefaultRequestHeaders =
-                {
-                    Authorization = new("Bearer", AuthorizationParameter),
-                },
-            };
-    }
-
-    private sealed record RecordedRequest(
-        HttpMethod Method,
-        string? RequestUri,
-        string? AuthorizationParameter);
-
-    private sealed class RecordingHttpMessageHandler(
-        Func<HttpRequestMessage, HttpResponseMessage> createResponse) : HttpMessageHandler
-    {
-        protected override Task<HttpResponseMessage> SendAsync(
-            HttpRequestMessage request,
-            CancellationToken cancellationToken)
-            => Task.FromResult(createResponse(request));
+        await act.Should().ThrowAsync<OverflowException>();
     }
 }

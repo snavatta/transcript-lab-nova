@@ -101,6 +101,9 @@ try
     builder.Services.AddScoped<IQueueService, QueueService>();
     builder.Services.AddScoped<IExportService, ExportService>();
     builder.Services.AddScoped<IDiagnosticsService, DiagnosticsService>();
+    builder.Services.AddSingleton<ISystemCapabilitiesService, SystemCapabilitiesService>();
+    builder.Services.AddSingleton<IHostedProviderCapabilitiesProbe, HostedProviderCapabilitiesProbe>();
+    builder.Services.AddSingleton<IRuntimeCapabilitiesProbe, RuntimeCapabilitiesProbe>();
     builder.Services.AddScoped<ITranscriptionModelManagerService, TranscriptionModelManagerService>();
     builder.Services.AddSingleton<IRuntimeMetricsSampler, RuntimeMetricsSampler>();
 
@@ -109,6 +112,8 @@ try
     builder.Services.AddSingleton<IMediaInspector, FfmpegMediaInspector>();
     builder.Services.AddSingleton<IAudioExtractor, FfmpegAudioExtractor>();
     builder.Services.AddSingleton<IAudioNormalizer, FfmpegAudioNormalizer>();
+    builder.Services.AddSingleton<IHostedFlacEncoder, FfmpegHostedFlacEncoder>();
+    builder.Services.AddSingleton<IHostedAudioPreparationService, HostedAudioPreparationService>();
 
     // Transcription
     builder.Services.Configure<SherpaOnnxOptions>(o =>
@@ -244,6 +249,7 @@ try
                 new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", opts.ApiKey);
     });
     builder.Services.Configure<OpenRouterOptions>(builder.Configuration.GetSection("Transcription:OpenRouter"));
+    builder.Services.AddSingleton<ISpeakerRoleAttributionService, OpenRouterSpeakerRoleAttributionService>();
     builder.Services.AddSingleton<IRegisteredTranscriptionEngine, OpenRouterTranscriptionEngine>();
     builder.Services.AddKeyedSingleton<ISpeechToTextClient, OpenRouterSpeechToTextClient>("OpenRouter");
     builder.Services.AddHttpClient(OpenRouterTranscriptionEngine.HttpClientName, (sp, client) =>
@@ -260,6 +266,25 @@ try
             }
         }
         client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds > 0 ? opts.TimeoutSeconds : 120);
+    });
+    builder.Services.Configure<XaiOptions>(builder.Configuration.GetSection(XaiOptions.SectionName));
+    builder.Services.AddSingleton<XaiTranscriptionEngine>();
+    builder.Services.AddSingleton<IRegisteredTranscriptionEngine>(sp => sp.GetRequiredService<XaiTranscriptionEngine>());
+    builder.Services.AddSingleton<IXaiDiarizationService>(sp => sp.GetRequiredService<XaiTranscriptionEngine>());
+    builder.Services.AddHttpClient(XaiTranscriptionEngine.HttpClientName, (sp, client) =>
+    {
+        var opts = sp.GetRequiredService<IOptions<XaiOptions>>().Value;
+        if (Uri.TryCreate(opts.BaseUrl.TrimEnd('/') + "/", UriKind.Absolute, out var baseUri)
+            && string.Equals(baseUri.Scheme, Uri.UriSchemeHttps, StringComparison.OrdinalIgnoreCase))
+        {
+            client.BaseAddress = baseUri;
+            if (!string.IsNullOrWhiteSpace(opts.ApiKey))
+            {
+                client.DefaultRequestHeaders.Authorization =
+                    new System.Net.Http.Headers.AuthenticationHeaderValue("Bearer", opts.ApiKey);
+            }
+        }
+        client.Timeout = TimeSpan.FromSeconds(opts.TimeoutSeconds > 0 ? opts.TimeoutSeconds : 1800);
     });
     builder.Services.AddSingleton<ICudaEnvironmentProbe, CudaEnvironmentProbe>();
     builder.Services.AddSingleton<ISherpaOnnxWorkerRunner, SherpaOnnxWorkerRunner>();
@@ -333,6 +358,7 @@ try
 
     app.MapFolderEndpoints();
     app.MapSettingsEndpoints();
+    app.MapSystemCapabilitiesEndpoints();
     app.MapDiagnosticsEndpoints();
     app.MapProjectEndpoints();
     app.MapUploadEndpoints();

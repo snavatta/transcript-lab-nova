@@ -57,5 +57,7 @@ internal static class TranscriptionSettingsDefaults
     private static string GetPreferredModel(string engine)
         => string.Equals(engine, "OpenVinoWhisperSidecar", StringComparison.OrdinalIgnoreCase)
             ? PreferredOpenVinoWhisperSidecarModel
-            : PreferredModel;
+            : string.Equals(engine, "Xai", StringComparison.OrdinalIgnoreCase)
+                ? XaiTranscriptionEngine.PreferredModel
+                : PreferredModel;
 }

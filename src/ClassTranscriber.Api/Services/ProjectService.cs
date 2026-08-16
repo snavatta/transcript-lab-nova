@@ -142,7 +142,9 @@ public class ProjectService : IProjectService
                 LanguageCode = normalizedSettings.LanguageCode,
                 AudioNormalizationEnabled = normalizedSettings.AudioNormalizationEnabled,
                 DiarizationEnabled = normalizedSettings.DiarizationEnabled,
+                DiarizationSource = normalizedSettings.DiarizationSource,
                 DiarizationMode = normalizedSettings.DiarizationMode,
+                SpeakerRoleAttributionEnabled = normalizedSettings.SpeakerRoleAttributionEnabled,
             };
         }
 
@@ -265,7 +267,13 @@ public class ProjectService : IProjectService
                 LanguageCode = p.Settings.LanguageCode,
                 AudioNormalizationEnabled = p.Settings.AudioNormalizationEnabled,
                 DiarizationEnabled = p.Settings.DiarizationEnabled,
+                DiarizationSource = DiarizationSourcePolicy.NormalizeStored(
+                    p.Settings.DiarizationSource,
+                    p.Settings.Engine,
+                    p.Settings.Model,
+                    _engineRegistry),
                 DiarizationMode = p.Settings.DiarizationMode,
+                SpeakerRoleAttributionEnabled = p.Settings.SpeakerRoleAttributionEnabled,
             },
             MediaUrl = $"/api/projects/{p.Id}/media",
             AudioPreviewUrl = audioPreviewRelativePath is not null ? $"/api/projects/{p.Id}/audio" : null,
@@ -321,6 +329,9 @@ public class ProjectService : IProjectService
 
     private ProjectSettingsDto NormalizeAndValidateSettings(ProjectSettingsDto settings)
     {
+        if (!DiarizationSourcePolicy.TryNormalize(settings.DiarizationSource, out var diarizationSource))
+            throw new ArgumentException("Invalid diarization source.");
+
         var normalized = new ProjectSettingsDto
         {
             Engine = settings.Engine.Trim(),
@@ -329,7 +340,9 @@ public class ProjectService : IProjectService
             LanguageCode = NormalizeLanguageCode(settings.LanguageCode),
             AudioNormalizationEnabled = settings.AudioNormalizationEnabled,
             DiarizationEnabled = settings.DiarizationEnabled,
+            DiarizationSource = diarizationSource,
             DiarizationMode = NormalizeDiarizationMode(settings.DiarizationMode),
+            SpeakerRoleAttributionEnabled = settings.SpeakerRoleAttributionEnabled,
         };
 
         if (string.IsNullOrWhiteSpace(normalized.Engine) || !_engineRegistry.IsSupportedEngine(normalized.Engine))
@@ -359,6 +372,17 @@ public class ProjectService : IProjectService
 
         if (normalized.DiarizationMode is not ("Basic" or "Improved"))
             throw new ArgumentException("Invalid diarization mode.");
+
+        if (!DiarizationSourcePolicy.IsSupported(
+                normalized.DiarizationSource,
+                normalized.Engine,
+                normalized.Model,
+                _engineRegistry))
+        {
+            throw new ArgumentException(
+                $"{normalized.Engine} model {normalized.Model} does not support "
+                + $"{(normalized.DiarizationSource == DiarizationSourcePolicy.Provider ? "provider" : "xAI")} diarization.");
+        }
 
         return normalized with
         {

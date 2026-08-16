@@ -22,6 +22,32 @@ public sealed class TranscriptionEngineRegistry : ITranscriptionEngineRegistry
             ? engine.SupportedModels.OrderBy(model => model, StringComparer.OrdinalIgnoreCase).ToArray()
             : [];
 
+    public IReadOnlyCollection<string> GetProviderDiarizationModels(string engineId)
+        => _engines.TryGetValue(engineId, out var engine)
+            && engine.GetAvailabilityError() is null
+            ? engine.ProviderDiarizationModels
+                .Where(model => engine.SupportedModels.Contains(model, StringComparer.OrdinalIgnoreCase))
+                .OrderBy(model => model, StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+            : [];
+
+    public IReadOnlyCollection<string> GetWordTimestampModels(string engineId)
+        => _engines.TryGetValue(engineId, out var engine)
+            && engine.GetAvailabilityError() is null
+            ? engine.WordTimestampModels
+                .Where(model => engine.SupportedModels.Contains(model, StringComparer.OrdinalIgnoreCase))
+                .OrderBy(model => model, StringComparer.OrdinalIgnoreCase)
+                .ToArray()
+            : [];
+
+    public bool SupportsProviderDiarization(string engineId, string model)
+        => !string.IsNullOrWhiteSpace(model)
+            && GetProviderDiarizationModels(engineId).Contains(model, StringComparer.OrdinalIgnoreCase);
+
+    public bool SupportsWordTimestamps(string engineId, string model)
+        => !string.IsNullOrWhiteSpace(model)
+            && GetWordTimestampModels(engineId).Contains(model, StringComparer.OrdinalIgnoreCase);
+
     public bool IsSupportedEngine(string engineId)
         => !string.IsNullOrWhiteSpace(engineId)
             && _engines.TryGetValue(engineId, out var engine)

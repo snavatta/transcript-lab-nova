@@ -10,8 +10,9 @@ public static class SettingsEndpoints
     {
         var group = app.MapGroup("/api/settings").WithTags("Settings");
 
-        group.MapGet("/options", (ITranscriptionEngineRegistry engineRegistry) =>
+        group.MapGet("/options", (ITranscriptionEngineRegistry engineRegistry, IServiceProvider services) =>
         {
+            var roleService = services.GetService<ISpeakerRoleAttributionService>();
             var options = new TranscriptionOptionsDto
             {
                 Engines = engineRegistry
@@ -20,8 +21,16 @@ public static class SettingsEndpoints
                     {
                         Engine = engine,
                         Models = engineRegistry.GetSupportedModels(engine).ToArray(),
+                        ProviderDiarizationModels = engineRegistry.GetProviderDiarizationModels(engine).ToArray(),
+                        WordTimestampModels = engineRegistry.GetWordTimestampModels(engine).ToArray(),
                     })
                     .ToArray(),
+                SpeakerRoleAttributionAvailable = roleService?.IsAvailable == true,
+                SpeakerRoleAttributionModel = roleService?.Model ?? OpenRouterSpeakerRoleAttributionService.DefaultModel,
+                RecommendedHostedEngine = "Xai",
+                RecommendedHostedModel = XaiTranscriptionEngine.PreferredModel,
+                XaiDiarizationAvailable = DiarizationSourcePolicy.IsXaiAvailable(engineRegistry),
+                XaiDiarizationModel = DiarizationSourcePolicy.XaiModel,
             };
 
             return Results.Ok(options);
@@ -98,7 +107,22 @@ public static class SettingsEndpoints
             if (!validDiarizationModes.Contains(request.DefaultDiarizationMode))
                 return Results.BadRequest(new ErrorResponse("validation_error", "Invalid diarization mode."));
 
-            var settings = await service.UpdateAsync(request, ct);
+            if (!DiarizationSourcePolicy.TryNormalize(request.DefaultDiarizationSource, out var diarizationSource))
+                return Results.BadRequest(new ErrorResponse("validation_error", "Invalid diarization source."));
+
+            if (!DiarizationSourcePolicy.IsSupported(
+                    diarizationSource,
+                    request.DefaultEngine,
+                    request.DefaultModel,
+                    engineRegistry))
+            {
+                return Results.BadRequest(new ErrorResponse(
+                    "validation_error",
+                    $"{request.DefaultEngine} model {request.DefaultModel} does not support "
+                    + $"{(diarizationSource == DiarizationSourcePolicy.Provider ? "provider" : "xAI")} diarization."));
+            }
+
+            var settings = await service.UpdateAsync(request with { DefaultDiarizationSource = diarizationSource }, ct);
             return Results.Ok(settings);
         })
         .WithName("UpdateSettings");
